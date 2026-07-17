@@ -51,3 +51,18 @@ Elementor-editable. Deliver via /app/frontend/public/downloads/.
 1. build_wtb.py style exact converter (parameterize SRC/OUT/TOKEN/DOMAIN/ROOT_FILES).
 2. Adapt PHP (prefix, asset css/js/font URLs, favicon, root-file list incl. any llms variants).
 3. Test on local WP (/var/www/wp), screenshot with scroll, verify single <title> + SEO.
+
+## 2026-07 — Website Editor (self-hosted in-context CMS) MVP
+Goal: client logs into private TrueNAS app, edits existing Hostinger static site in-context
+(click text to edit, click image to replace), Publish renders + backs up + SFTP-pushes to Hostinger.
+Stack: React + FastAPI + MongoDB. Verified 16/16 backend + all frontend flows (testing agent iter 1).
+- Auth: JWT httpOnly cookie, roles admin/editor, seeded admin from .env.
+- Ingestion: parse each page HTML -> inject data-eid on leaf text + <img>, store template+regions+seo+head_assets.
+- Editor: iframe loads editor-mode HTML (contenteditable + click-to-replace images), autosave.
+- Publish: render clean HTML (data-eid stripped), copy assets + robots/llms/llms-full/sitemap,
+  zip backup to backup dataset, SFTP upload (paramiko). SFTP unset -> render+backup only.
+- Docker: docker-compose (mongo+backend+web nginx), app on :30042, volumes to TrueNAS datasets.
+- Files: backend/server.py, frontend/src/App.js+App.css, docker-compose.yml, backend/Dockerfile,
+  frontend/Dockerfile+nginx.conf, .env.example, README.md, backend/tests/backend_test.py.
+Hardening backlog: brute-force lockout on login, cookie secure=True in prod, specific CORS origins,
+2FA (deferred), multi-site management UI, version/rollback UI, per-user site scoping enforcement in editor.
