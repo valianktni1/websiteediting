@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Ivory Digital - Website (Elementor)
  * Description:        Imports the full Ivory Digital website (all 22 pages) as Elementor-editable pages with pixel-exact design, full SEO, schema, robots.txt, sitemap.xml and llms.txt. Requires Elementor.
- * Version:           1.3.0
+ * Version:           1.4.0
  * Author:            Ivory Digital
  * License:           GPL-2.0+
  * Text Domain:       ivory-digital
@@ -19,7 +19,7 @@ define( 'IVORY_BASE_URL', rtrim( IVORY_URL, '/' ) );          // plugin base (no
 define( 'IVORY_ASSETS_URL', IVORY_BASE_URL . '/assets' );      // for direct enqueues
 define( 'IVORY_BASE_TOKEN', '__IVORY_BASE__' );                // markup already contains /assets/
 define( 'IVORY_MAP_OPTION', 'ivory_imported_map' );
-define( 'IVORY_VERSION', '1.3.0' );
+define( 'IVORY_VERSION', '1.4.0' );
 define( 'IVORY_VER_OPTION', 'ivory_plugin_version' );
 
 function ivory_elementor_active() {

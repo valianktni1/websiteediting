@@ -1,31 +1,37 @@
 # WordPress/Elementor Plugin Builder — PRD
 
-## Problem
-User wants HTML/structured sites converted into installable WordPress plugin ZIPs whose
-pages are editable in Elementor. Delivery = downloadable .zip via /app/frontend/public/downloads/.
+## Goal
+Convert static HTML sites into installable WordPress plugin ZIPs whose pages are
+Elementor-editable. Deliver via /app/frontend/public/downloads/.
 
-## Delivered
-1. Car Sales home page plugin (your-car-sales-elementor.zip) — native Elementor widgets,
-   classy dealership home page, placeholder branding. (2026-07-17)
-2. Ivory Digital full-site plugin (ivory-digital-elementor.zip) — all 22 pages converted
-   from static HTML to Elementor pages. (2026-07-17)
-   - Body: native, editable Elementor widgets (headings/text/images) carrying original CSS
-     classes; buttons/nav/lists/icons/header/footer kept as exact markup.
-   - Bundles original style.v3.css + Google fonts (Cormorant Garamond + Jost).
-   - Exact per-page SEO via wp_head: title, meta, OG/Twitter, canonical, JSON-LD graph.
-   - Serves robots.txt, sitemap.xml, llms.txt, llms_full.txt at site root.
-   - Clean URLs (.html -> /slug/), home set as front page, Elementor Canvas template.
-   - Admin importer under "Ivory Digital" menu; idempotent import + re-import/reset.
+## Live test harness (persistent in /app/wpbuild, WP in /var/www/wp)
+- Real WordPress + Elementor + plugin installed locally (MariaDB, php -S :8080).
+- Playwright (local) screenshots front-end AND the Elementor editor for true verification.
+- WP admin: admin/admin (LOCAL TEST ONLY).
+
+## Deliverables
+1. your-car-sales-elementor.zip — dealership home page (native widgets).
+2. ivory-digital-elementor.zip — full Ivory Digital site, 22 pages. Current v1.4.0.
+   - v1.0 native (broken layout) -> v1.1/1.2 exact-HTML blocks (fixed /assets/ double path)
+     -> v1.3 version-aware auto-reimport -> v1.4 NATIVE editable rebuild.
+   - v1.4: body sections rebuilt as NATIVE Elementor widgets (Heading/Text/Button/Divider/
+     Icon/Accordion, card grids) styled to Ivory tokens (~99% match, 685 native widgets).
+   - Complex sections kept as exact HTML blocks (safe fallback, still pixel-perfect):
+     home hero w/ dashboard image, steps, 2-col showcases, pricing plans table,
+     contact form, header, footer, breadcrumbs (76 html blocks total).
+   - Exact per-page SEO via wp_head (title/meta/OG/Twitter/canonical + JSON-LD graph),
+     robots.txt, sitemap.xml, llms.txt, llms_full.txt. Locked to https://ivorydigital.uk/.
+   - Auto-refresh on version change; Home set as front page; clean URLs.
 
 ## Build tooling
-- /tmp/build2/convert.py — HTML -> Elementor JSON converter (BeautifulSoup).
-- Plugin source: /tmp/build2/plugin/ivory-digital-elementor/
+- /app/wpbuild/convert.py         -> SEO/manifest/assets + (legacy) exact-HTML templates
+- /app/wpbuild/native_convert.py  -> NATIVE Elementor templates (run: python3 native_convert.py all)
+  (run convert.py first for data files, then native_convert.py to overwrite templates)
 
-## Not verified
-- Could NOT test on a live WordPress/Elementor instance (not available in this env).
-  PHP linted clean; all JSON validated. Final install/activate is done by user on Hostinger.
+## Verified on real WP (screenshots)
+- Front-end: home, pricing, contact, faq, studioapp, about, liverpool — match ~99%.
+- Editor: heading shows editable Title field; Structure tree lists native widgets.
 
-## Backlog / Next
-- Optional: Elementor Pro (Pro Elements) global header/footer via Theme Builder.
-- Optional: working contact/enquiry Form (Pro Elements) replacing mailto buttons.
-- Optional: convert buttons to native Elementor Button widgets with replicated styles.
+## Backlog
+- Native mappings for steps / 2-col showcase / pricing plans / contact form (currently HTML).
+- Optional: Pro Elements global header/footer (Theme Builder) + working Form widget.
