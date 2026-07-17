@@ -1,0 +1,79 @@
+# Wife To Be — canonical host, HTTPS, clean URLs, performance & caching
+Options -Indexes
+DirectoryIndex index.html
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Force HTTPS
+  RewriteCond %{HTTPS} !=on
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # Force non-www (wifetobe.org, not www.wifetobe.org)
+  RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+  RewriteRule ^ https://%1%{REQUEST_URI} [L,R=301]
+
+  # ----- Legacy URL 301 redirects (old site / stale Google index) -----
+  # Old contact URLs -> contact.html
+  RewriteRule ^contactus(\.html)?/?$        /contact.html [L,R=301,NC]
+  RewriteRule ^contact-us(\.html)?/?$       /contact.html [L,R=301,NC]
+  # Old testimonials / reviews -> brides.html
+  RewriteRule ^testimonials(\.html)?/?$     /brides.html [L,R=301,NC]
+  RewriteRule ^reviews(\.html)?/?$          /brides.html [L,R=301,NC]
+  # Old men's formal wear / suit hire slugs -> mens-formal-wear.html
+  RewriteRule ^mens-formal-hire(\.html)?/?$ /mens-formal-wear.html [L,R=301,NC]
+  RewriteRule ^mens-suit-hire(\.html)?/?$   /mens-formal-wear.html [L,R=301,NC]
+  RewriteRule ^suit-hire(\.html)?/?$        /mens-formal-wear.html [L,R=301,NC]
+  RewriteRule ^mens-formal(\.html)?/?$      /mens-formal-wear.html [L,R=301,NC]
+  # Old wedding dress / bridal slugs -> bridal-collections.html
+  RewriteRule ^wedding-dresses(\.html)?/?$  /bridal-collections.html [L,R=301,NC]
+  RewriteRule ^bridalwear(\.html)?/?$       /bridal-collections.html [L,R=301,NC]
+  RewriteRule ^bridal(\.html)?/?$           /bridal-collections.html [L,R=301,NC]
+  RewriteRule ^gowns(\.html)?/?$            /bridal-collections.html [L,R=301,NC]
+  RewriteRule ^prom(\.html)?/?$             /bridal-collections.html [L,R=301,NC]
+  # Old about / home slugs
+  RewriteRule ^about-us(\.html)?/?$         /about.html [L,R=301,NC]
+  RewriteRule ^home(\.html)?/?$             / [L,R=301,NC]
+
+  # Redirect /index.html to /
+  RewriteCond %{THE_REQUEST} \s/index\.html[\s?] [NC]
+  RewriteRule ^index\.html$ / [L,R=301]
+
+  # Redirect extensionless URLs to the real .html file (when it exists)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{DOCUMENT_ROOT}/$1.html -f
+  RewriteRule ^(.+?)/?$ /$1.html [L,R=301]
+</IfModule>
+
+ErrorDocument 404 /404.html
+
+# ----- Gzip / Brotli compression -----
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/xml
+  AddOutputFilterByType DEFLATE application/javascript application/x-javascript text/javascript
+  AddOutputFilterByType DEFLATE application/json application/xml application/rss+xml
+  AddOutputFilterByType DEFLATE image/svg+xml application/x-font-ttf font/woff font/woff2
+</IfModule>
+
+# ----- Browser caching / efficient cache lifetimes -----
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css                "access plus 1 month"
+  ExpiresByType application/javascript  "access plus 1 month"
+  ExpiresByType text/javascript         "access plus 1 month"
+  ExpiresByType image/png               "access plus 1 year"
+  ExpiresByType image/jpeg              "access plus 1 year"
+  ExpiresByType image/webp              "access plus 1 year"
+  ExpiresByType image/svg+xml           "access plus 1 year"
+  ExpiresByType image/x-icon            "access plus 1 year"
+  ExpiresByType font/woff2              "access plus 1 year"
+  ExpiresByType text/html               "access plus 1 day"
+  ExpiresDefault                        "access plus 1 month"
+</IfModule>
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.(css|js|png|jpe?g|webp|svg|ico|woff2?)$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+</IfModule>

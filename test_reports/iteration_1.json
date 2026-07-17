@@ -1,0 +1,35 @@
+{
+  "summary": "Full backend + frontend testing of Website Editor (Wife To Be CMS). 16/16 pytest cases passed and end-to-end UI flow (login, dashboard, editor iframe, preview, publish) works correctly.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is ~420 lines — acceptable for MVP but could be split into routers (auth/sites/pages/publish) as it grows.",
+    "CORS uses allow_origins=['*'] with allow_credentials=True — browsers reject wildcard+credentials in strict mode. In preview it works because both frontend and backend share the same origin, but for a production CORS-based flow this should be a specific origin list. Not blocking for MVP.",
+    "No brute-force lockout on /api/auth/login (playbook mentions 5-attempt lockout). Currently unlimited attempts allowed — flag for hardening.",
+    "seed_admin only creates the admin if missing; if password changes in .env after first boot, it will NOT be updated. For MVP acceptable but note for future.",
+    "JWT cookie uses secure=False — required for preview http-like context but should be True in production over HTTPS.",
+    "render_page uses BeautifulSoup(r['value'], 'lxml') on text replace which can wrap fragments in <html><body> — currently works because .decode_contents strips outer body, but subtle. Consider using 'html.parser' with a wrapper for safety."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (all flows verified)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Test created one editor user (TEST_editor_<ts>@example.com) for RBAC test; left in DB (idempotent-safe).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/backend_test.py and cover auth, sites/pages, region update, media upload, SEO preservation, preview clean-output, root-file preservation (robots/llms/sitemap), publish-without-SFTP (returns published=false with backup+message — this is EXPECTED per PRD), editor iframe html + auth, RBAC (editor gets 403 on /api/users). Frontend E2E verified via Playwright: login (wrong+correct), 14 page cards, page-about editor opens with iframe containing 48 data-eid regions and 4 stylesheets (fully-styled), SEO title input populated, back to dashboard, Preview opens dist/index.html in a new tab, Publish click triggers flow. All data-testids from App.js are correctly wired.",
+  "verified_features": [
+    "Login success + wrong-password error",
+    "GET /api/auth/me cookie-based auth",
+    "14 pages listed (all expected slugs present incl. 404)",
+    "Editor iframe loads fully-styled page with data-eid editable regions (editor-mode only)",
+    "Text region PUT persists (GET verified)",
+    "Image upload returns assets/uploads/... URL and PUT region persists",
+    "SEO title update persists; metas & jsonld arrays remain non-empty (preserved)",
+    "Preview builds dist with 14 pages, HTML has NO data-eid attributes (clean output)",
+    "Publish without SFTP: published=false, backup path returned, message mentions SFTP not configured",
+    "RBAC: editor login → POST /api/users returns 403; GET /api/users also 403",
+    "Root files robots.txt, llms.txt, llms-full.txt, sitemap.xml served by /api/dist"
+  ]
+}

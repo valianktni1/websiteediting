@@ -1,0 +1,35 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - /mnt/apps/website_editor/mongo:/data/db
+    # not published to host - only reachable inside the compose network
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    environment:
+      MONGO_URL: "mongodb://mongo:27017"
+      DB_NAME: "website_editor"
+      JWT_SECRET: "${JWT_SECRET}"
+      ADMIN_EMAIL: "${ADMIN_EMAIL}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
+      SITES_DIR: "/data/sites"
+      DATA_DIR: "/data/app"
+      BACKUP_DIR: "/data/backups"
+    volumes:
+      # put each site's exported HTML in a subfolder, e.g. /mnt/apps/website_editor/sites/wifetobe
+      - /mnt/apps/website_editor/sites:/data/sites
+      - /mnt/apps/website_editor/data:/data/app
+      - /mnt/photographers_data/website_editor_backup:/data/backups
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "30042:80"   # NPM proxies client.wifetobe.org -> http://<truenas-ip>:30042
