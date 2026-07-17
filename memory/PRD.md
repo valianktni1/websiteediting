@@ -66,3 +66,20 @@ Stack: React + FastAPI + MongoDB. Verified 16/16 backend + all frontend flows (t
   frontend/Dockerfile+nginx.conf, .env.example, README.md, backend/tests/backend_test.py.
 Hardening backlog: brute-force lockout on login, cookie secure=True in prod, specific CORS origins,
 2FA (deferred), multi-site management UI, version/rollback UI, per-user site scoping enforcement in editor.
+
+## 2026-07 (fork) — Admin & client management UI shipped
+Backend already had endpoints; added the full frontend + 3 hardening fixes. Verified 30/30 backend
+pytest + 12/12 frontend E2E (iteration_2.json).
+- Admin Settings modal (admin-only, App.js): Users tab (list/create/delete client users),
+  Hostinger SFTP tab (per-site host/port/user/pass/remote_path), Sites tab (available-sites + ingest/re-ingest).
+- Client page management: "+ New page" (copy of Home) and per-card delete (× on non-home pages);
+  editors allowed, home page protected.
+- Version history modal: lists auto-backups (per publish), one-click Restore (admin-only).
+- Login hardening LIVE: 5 failed attempts -> 15-min lockout (db.login_attempts), 429 shown in UI.
+- Fixes applied this fork:
+  1. PUT /sites/{slug}/sftp preserves existing password when submitted blank ("leave blank to keep").
+  2. create_page/delete_page scoped by user site_id for non-admin editors (scope_ok helper).
+  3. /sites/{slug}/restore now require_admin.
+- STILL MOCKED: SFTP publish/restore (no live Hostinger creds). publish=false/restore=false with a
+  clear "SFTP not configured" message is EXPECTED until creds entered in Admin > SFTP tab.
+- Backlog: cookie secure=True + specific CORS in prod, 2FA, editor iframe per-site scoping.

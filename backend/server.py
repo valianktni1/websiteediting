@@ -370,7 +370,11 @@ async def serve_dist(slug: str, path: str):
 
 @api.put("/sites/{slug}/sftp")
 async def set_sftp(slug: str, body: SftpSettings, u=Depends(require_admin)):
-    await db.sites.update_one({"slug":slug},{"$set":{"sftp":body.model_dump()}})
+    data = body.model_dump()
+    if not data.get("password"):
+        existing = await db.sites.find_one({"slug":slug})
+        data["password"] = (existing or {}).get("sftp",{}).get("password","")
+    await db.sites.update_one({"slug":slug},{"$set":{"sftp":data}})
     return {"ok":True}
 
 @api.post("/sites/{slug}/publish")
@@ -446,8 +450,12 @@ async def available_sites(u=Depends(require_admin)):
                 out.append({"slug":name,"ingested":bool(ing),"pages":len(glob.glob(os.path.join(p,"*.html")))})
     return out
 
+def scope_ok(u, site):
+    return u.get("role")=="admin" or not u.get("site_id") or u["site_id"]==site
+
 @api.post("/pages/{site}")
 async def create_page(site: str, body: NewPage, u=Depends(current_user)):
+    if not scope_ok(u, site): raise HTTPException(403,"Not allowed to edit this site")
     slug = re.sub(r'[^a-z0-9-]','-', body.slug.lower()).strip('-')
     if not slug: raise HTTPException(400,"Invalid URL slug")
     if slug=="home" or await db.pages.find_one({"site":site,"slug":slug}):
@@ -471,6 +479,7 @@ async def create_page(site: str, body: NewPage, u=Depends(current_user)):
 
 @api.delete("/pages/{site}/{slug}")
 async def delete_page(site: str, slug: str, u=Depends(current_user)):
+    if not scope_ok(u, site): raise HTTPException(403,"Not allowed to edit this site")
     if slug=="home": raise HTTPException(400,"Cannot delete the home page")
     await db.pages.delete_one({"site":site,"slug":slug})
     s = await db.sites.find_one({"slug":site})
