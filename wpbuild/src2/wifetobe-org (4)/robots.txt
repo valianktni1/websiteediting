@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://wifetobe.org/sitemap.xml
+
+# AI / LLM information files
+# llms.txt: https://wifetobe.org/llms.txt
+# llms-full.txt: https://wifetobe.org/llms-full.txt

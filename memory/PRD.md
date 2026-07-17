@@ -35,3 +35,19 @@ Elementor-editable. Deliver via /app/frontend/public/downloads/.
 ## Backlog
 - Native mappings for steps / 2-col showcase / pricing plans / contact form (currently HTML).
 - Optional: Pro Elements global header/footer (Theme Builder) + working Form widget.
+
+## 2026-07 — Second site: Wife To Be (wifetobe.org)
+- Delivered wifetobe-elementor.zip (v1.0.0) — 14 pages via EXACT-HTML approach
+  (user asked to preserve everything, so 100% fidelity over native editability).
+- Full SEO preserved (title/desc/keywords/canonical/OG/Twitter + JSON-LD),
+  robots.txt, sitemap.xml, llms.txt, llms-full.txt served at root. Domain kept wifetobe.org.
+- Build: /app/wpbuild/build_wtb.py ; plugin src /app/wpbuild/plugin2/wifetobe-elementor
+- Verified on local WP: home + collections + boutiques render 1:1 (gaps were scroll-reveal
+  animation, not lost content). Fixed duplicate <title> (block-theme + Canvas) via
+  template_redirect ob_start dedup — added to BOTH plugins.
+- Ivory bumped to 1.4.1 with the same single-title guard.
+
+## Reusable pattern for future sites
+1. build_wtb.py style exact converter (parameterize SRC/OUT/TOKEN/DOMAIN/ROOT_FILES).
+2. Adapt PHP (prefix, asset css/js/font URLs, favicon, root-file list incl. any llms variants).
+3. Test on local WP (/var/www/wp), screenshot with scroll, verify single <title> + SEO.
