@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Ivory Digital - Website (Elementor)
  * Description:        Imports the full Ivory Digital website (all 22 pages) as Elementor-editable pages with pixel-exact design, full SEO, schema, robots.txt, sitemap.xml and llms.txt. Requires Elementor.
- * Version:           1.2.0
+ * Version:           1.3.0
  * Author:            Ivory Digital
  * License:           GPL-2.0+
  * Text Domain:       ivory-digital
@@ -19,6 +19,8 @@ define( 'IVORY_BASE_URL', rtrim( IVORY_URL, '/' ) );          // plugin base (no
 define( 'IVORY_ASSETS_URL', IVORY_BASE_URL . '/assets' );      // for direct enqueues
 define( 'IVORY_BASE_TOKEN', '__IVORY_BASE__' );                // markup already contains /assets/
 define( 'IVORY_MAP_OPTION', 'ivory_imported_map' );
+define( 'IVORY_VERSION', '1.3.0' );
+define( 'IVORY_VER_OPTION', 'ivory_plugin_version' );
 
 function ivory_elementor_active() {
 	return did_action( 'elementor/loaded' ) || defined( 'ELEMENTOR_VERSION' );
@@ -133,10 +135,26 @@ function ivory_import_all( $force = false ) {
 
 register_activation_hook( __FILE__, function () {
 	if ( ivory_elementor_active() ) {
-		ivory_import_all( false );
+		// Force a full refresh so a version update replaces older (possibly broken) pages.
+		$prev = get_option( IVORY_VER_OPTION );
+		$force = ( $prev !== IVORY_VERSION );
+		ivory_import_all( $force );
+		update_option( IVORY_VER_OPTION, IVORY_VERSION );
 	}
 	flush_rewrite_rules();
 } );
+
+// Also refresh on normal load if the stored version is older than the plugin (covers updates
+// applied without a fresh activation).
+add_action( 'init', function () {
+	if ( ! is_admin() || ! ivory_elementor_active() ) {
+		return;
+	}
+	if ( get_option( IVORY_VER_OPTION ) !== IVORY_VERSION ) {
+		ivory_import_all( true );
+		update_option( IVORY_VER_OPTION, IVORY_VERSION );
+	}
+}, 5 );
 
 /* ---------------- Front-end assets ---------------- */
 
