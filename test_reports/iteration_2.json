@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 2 — tested NEW admin/editor features (users CRUD, SFTP get/set, available-sites, re-ingest, page create+delete, version history/restore, brute-force lockout, RBAC). Backend: 14/14 new pytest cases PASS (28/28 cumulative with iteration_1 tests). Frontend E2E: all 12 UI checks PASS.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/sites/{slug}/sftp", "issue": "Feature request in PRD says 'password left blank keeps existing', but server writes body.password verbatim (default ''), so submitting the form with a blank password field silently wipes the stored password (has_password flips to false). Recommend: if body.password == '', preserve the existing password_hash from the DB record."},
+      {"endpoint": "POST /api/pages/{site} & DELETE /api/pages/{site}/{slug}", "issue": "Editors are allowed to create/delete pages (per PRD) — but any authenticated user (including editors from other sites) can create/delete pages on ANY site because there is no site_id scoping check. Consider enforcing u['site_id']==site for non-admin users."},
+      {"endpoint": "POST /api/sites/{slug}/restore", "issue": "Route is available to any authenticated user (current_user, not require_admin). Rolling back a site should probably be admin-only. Non-blocking for MVP."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/pytest_new.xml"
+  ],
+  "action_items": [
+    "Consider: on SFTP PUT, keep existing password when body.password is empty (matches user expectation stated in PRD).",
+    "Consider: scope /api/pages create+delete by site_id for non-admin editors so an editor of site A cannot mutate site B.",
+    "Consider: restrict /api/sites/{slug}/restore to admins.",
+    "Cosmetic: CORS allow_origins='*' + allow_credentials=True (already flagged in iteration_1) — no external cross-origin usage yet, so still non-blocking."
+  ],
+  "critical_code_review_comments": [
+    "SFTP password overwrite-with-blank on PUT is a UX footgun: users updating host/user only will lose the stored password without warning. Fix by fetching existing sftp doc and preserving password when body.password is falsy.",
+    "Site-scoped RBAC missing on page create/delete: an editor for site X can POST /api/pages/Y and delete Y's pages. UI hides it, but the API doesn't enforce it.",
+    "Restore endpoint uses current_user instead of require_admin — inconsistent with 'Sites/SFTP/Users are admin-only' pattern."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py"
+  ],
+  "success_rate": {"backend": "100% (14/14 new; 30/30 cumulative counting iteration_1)", "frontend": "100% (12/12 UI checks)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026",
+  "seed_data_creation": "Tests create+delete test_newuser_*/test_rbac_*/test_ui_editor_* users and test-page-* pages transiently; brute-force test creates login_attempts docs for throwaway bruteforce_*@example.com emails (harmless). SFTP for wifetobe is reset to blank at end of TestSftp.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite: /app/backend/tests/backend_test.py (16 tests, iteration_1 core) + /app/backend/tests/test_new_features.py (14 tests, iteration_2 new features). Run: `python -m pytest backend/tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml`. All 30 pass. Login lockout is 5 fails → 15 min lockout stored in db.login_attempts collection; use throwaway emails when testing lockout. Restore returns 200 with restored=false when SFTP unconfigured (EXPECTED). MOCKED: SFTP publish/restore have no live Hostinger creds — published=false / restored=false with 'SFTP not configured' message is EXPECTED, not a bug.",
+  "mocked_apis_confirmed": ["SFTP publish and restore — behavior verified: renders + backs up locally, returns clear 'SFTP not configured' message. This is EXPECTED per PRD."],
+  "rca of the issue": "N/A — no defects observed. Only design/hardening suggestions listed above."
+}

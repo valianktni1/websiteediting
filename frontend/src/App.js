@@ -46,18 +46,253 @@ function Login() {
   );
 }
 
+function Modal({ title, onClose, children, wide }) {
+  return (
+    <div className="modal-overlay" onClick={onClose} data-testid="modal-overlay">
+      <div className={`modal ${wide ? "wide" : ""}`} onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>{title}</h3>
+          <button className="modal-x" onClick={onClose} data-testid="modal-close">×</button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function AddPageModal({ site, onClose, onDone, flash }) {
+  const [title, setTitle] = useState(""); const [slug, setSlug] = useState("");
+  const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const slugFromTitle = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const submit = async () => {
+    setErr(""); setBusy(true);
+    try {
+      const finalSlug = (slug || slugFromTitle(title));
+      await axios.post(`${API}/pages/${site}`, { slug: finalSlug, title });
+      flash("Page created"); onDone();
+    } catch (e) { setErr(e.response?.data?.detail || "Could not create page"); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Add a new page" onClose={onClose}>
+      <p className="hint">A new page is created as a copy of your Home page so it already has your header, footer and styling — just edit the content.</p>
+      <label>Page title</label>
+      <input data-testid="addpage-title" value={title} placeholder="e.g. Our Services"
+        onChange={e => { setTitle(e.target.value); setSlug(slugFromTitle(e.target.value)); }} />
+      <label>Page URL</label>
+      <div className="slug-row"><span>/</span>
+        <input data-testid="addpage-slug" value={slug} placeholder="our-services"
+          onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} />
+        <span>/</span>
+      </div>
+      {err && <div className="err" data-testid="addpage-error">{err}</div>}
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={onClose}>Cancel</button>
+        <button className="btn primary" data-testid="addpage-submit" disabled={busy || !title} onClick={submit}>
+          {busy ? "Creating…" : "Create page"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function VersionHistory({ site, onClose, flash }) {
+  const [backups, setBackups] = useState(null);
+  const [busy, setBusy] = useState("");
+  const load = useCallback(() => {
+    axios.get(`${API}/sites/${site}/backups`).then(r => setBackups(r.data));
+  }, [site]);
+  useEffect(() => { load(); }, [load]);
+  const restore = async (name) => {
+    if (!window.confirm(`Roll back the live site to this version?\n${name}`)) return;
+    setBusy(name);
+    try {
+      const { data } = await axios.post(`${API}/sites/${site}/restore`, { name });
+      flash(data.message || "Restore complete");
+    } catch (e) { flash("Restore failed"); }
+    finally { setBusy(""); }
+  };
+  const fmt = (iso) => new Date(iso).toLocaleString();
+  const kb = (b) => `${(b / 1024).toFixed(0)} KB`;
+  return (
+    <Modal title="Version history" onClose={onClose} wide>
+      <p className="hint">Every time you publish, a full backup is saved. Roll back to any earlier version to restore it live.</p>
+      {backups === null && <div className="muted">Loading…</div>}
+      {backups && backups.length === 0 && <div className="muted" data-testid="no-backups">No backups yet — publish once to create your first restore point.</div>}
+      <div className="version-list" data-testid="version-list">
+        {backups && backups.map(b => (
+          <div className="version-row" key={b.name} data-testid={`version-${b.name}`}>
+            <div>
+              <div className="version-date">{fmt(b.created)}</div>
+              <div className="version-meta">{b.name} · {kb(b.size)}</div>
+            </div>
+            <button className="btn" disabled={busy === b.name} data-testid={`restore-${b.name}`} onClick={() => restore(b.name)}>
+              {busy === b.name ? "Restoring…" : "Restore"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function AdminSettings({ onClose, flash }) {
+  const [tab, setTab] = useState("users");
+  return (
+    <Modal title="Admin settings" onClose={onClose} wide>
+      <div className="tabs">
+        <button className={`tab ${tab === "users" ? "on" : ""}`} data-testid="tab-users" onClick={() => setTab("users")}>Users</button>
+        <button className={`tab ${tab === "sftp" ? "on" : ""}`} data-testid="tab-sftp" onClick={() => setTab("sftp")}>Hostinger SFTP</button>
+        <button className={`tab ${tab === "sites" ? "on" : ""}`} data-testid="tab-sites" onClick={() => setTab("sites")}>Sites</button>
+      </div>
+      {tab === "users" && <UsersTab flash={flash} />}
+      {tab === "sftp" && <SftpTab flash={flash} />}
+      {tab === "sites" && <SitesTab flash={flash} />}
+    </Modal>
+  );
+}
+
+function UsersTab({ flash }) {
+  const [users, setUsers] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [f, setF] = useState({ email: "", password: "", name: "", role: "editor", site_id: "" });
+  const [err, setErr] = useState("");
+  const load = () => axios.get(`${API}/users`).then(r => setUsers(r.data));
+  useEffect(() => { load(); axios.get(`${API}/sites`).then(r => setSites(r.data)); }, []);
+  const create = async () => {
+    setErr("");
+    try {
+      await axios.post(`${API}/users`, { ...f, site_id: f.site_id || null });
+      setF({ email: "", password: "", name: "", role: "editor", site_id: "" });
+      flash("User created"); load();
+    } catch (e) { setErr(e.response?.data?.detail || "Could not create user"); }
+  };
+  const del = async (id) => {
+    if (!window.confirm("Remove this user?")) return;
+    await axios.delete(`${API}/users/${id}`); flash("User removed"); load();
+  };
+  return (
+    <div>
+      <div className="admin-list" data-testid="users-list">
+        {users.map(u => (
+          <div className="admin-row" key={u.id} data-testid={`user-${u.email}`}>
+            <div>
+              <div className="admin-title">{u.email}</div>
+              <div className="admin-meta">{u.role}{u.site_id ? ` · ${u.site_id}` : ""}</div>
+            </div>
+            {u.role !== "admin" && <button className="btn danger" data-testid={`del-user-${u.email}`} onClick={() => del(u.id)}>Remove</button>}
+          </div>
+        ))}
+      </div>
+      <div className="admin-form">
+        <h4>Add a client user</h4>
+        <label>Email</label>
+        <input data-testid="nu-email" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} />
+        <label>Name</label>
+        <input data-testid="nu-name" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
+        <label>Temporary password</label>
+        <input data-testid="nu-password" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} />
+        <label>Role</label>
+        <select data-testid="nu-role" value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>
+          <option value="editor">Editor (client)</option>
+          <option value="admin">Admin</option>
+        </select>
+        <label>Assign to site (optional)</label>
+        <select data-testid="nu-site" value={f.site_id} onChange={e => setF({ ...f, site_id: e.target.value })}>
+          <option value="">— none —</option>
+          {sites.map(s => <option key={s.slug} value={s.slug}>{s.name || s.slug}</option>)}
+        </select>
+        {err && <div className="err">{err}</div>}
+        <button className="btn primary" data-testid="nu-submit" disabled={!f.email || !f.password} onClick={create}>Create user</button>
+      </div>
+    </div>
+  );
+}
+
+function SftpTab({ flash }) {
+  const [sites, setSites] = useState([]);
+  const [slug, setSlug] = useState("");
+  const [f, setF] = useState({ host: "", port: 22, username: "", password: "", remote_path: "/public_html" });
+  const [hasPw, setHasPw] = useState(false);
+  useEffect(() => { axios.get(`${API}/sites`).then(r => { setSites(r.data); if (r.data[0]) setSlug(r.data[0].slug); }); }, []);
+  useEffect(() => {
+    if (!slug) return;
+    axios.get(`${API}/sites/${slug}/sftp`).then(r => {
+      setF({ host: r.data.host, port: r.data.port, username: r.data.username, password: "", remote_path: r.data.remote_path });
+      setHasPw(r.data.has_password);
+    });
+  }, [slug]);
+  const save = async () => {
+    await axios.put(`${API}/sites/${slug}/sftp`, f);
+    flash("SFTP settings saved"); setHasPw(!!f.password || hasPw);
+  };
+  return (
+    <div className="admin-form">
+      <label>Site</label>
+      <select data-testid="sftp-site" value={slug} onChange={e => setSlug(e.target.value)}>
+        {sites.map(s => <option key={s.slug} value={s.slug}>{s.name || s.slug}</option>)}
+      </select>
+      <label>Host</label>
+      <input data-testid="sftp-host" value={f.host} placeholder="ftp.yourdomain.com" onChange={e => setF({ ...f, host: e.target.value })} />
+      <label>Port</label>
+      <input data-testid="sftp-port" type="number" value={f.port} onChange={e => setF({ ...f, port: parseInt(e.target.value || "22") })} />
+      <label>Username</label>
+      <input data-testid="sftp-user" value={f.username} onChange={e => setF({ ...f, username: e.target.value })} />
+      <label>Password {hasPw && <span className="muted">(saved — leave blank to keep)</span>}</label>
+      <input data-testid="sftp-pass" type="password" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} />
+      <label>Remote path</label>
+      <input data-testid="sftp-path" value={f.remote_path} onChange={e => setF({ ...f, remote_path: e.target.value })} />
+      <button className="btn primary" data-testid="sftp-save" disabled={!slug} onClick={save}>Save SFTP settings</button>
+    </div>
+  );
+}
+
+function SitesTab({ flash }) {
+  const [avail, setAvail] = useState([]);
+  const [busy, setBusy] = useState("");
+  const load = () => axios.get(`${API}/available-sites`).then(r => setAvail(r.data));
+  useEffect(() => { load(); }, []);
+  const ingest = async (slug) => {
+    setBusy(slug);
+    try { const { data } = await axios.post(`${API}/sites/${slug}/ingest`); flash(`Ingested ${data.ingested} pages`); load(); }
+    catch (e) { flash("Ingest failed"); }
+    finally { setBusy(""); }
+  };
+  return (
+    <div>
+      <p className="hint">Drop a built static site folder into the app's <code>sites_source</code> directory and it will appear here to ingest.</p>
+      <div className="admin-list" data-testid="available-sites">
+        {avail.length === 0 && <div className="muted">No source sites found.</div>}
+        {avail.map(s => (
+          <div className="admin-row" key={s.slug} data-testid={`avail-${s.slug}`}>
+            <div>
+              <div className="admin-title">{s.slug}</div>
+              <div className="admin-meta">{s.pages} pages · {s.ingested ? "ingested" : "not ingested"}</div>
+            </div>
+            <button className="btn" disabled={busy === s.slug} data-testid={`ingest-${s.slug}`} onClick={() => ingest(s.slug)}>
+              {busy === s.slug ? "Ingesting…" : s.ingested ? "Re-ingest" : "Ingest"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Dashboard() {
   const { user, logout } = useAuth();
   const [site, setSite] = useState(null);
   const [pages, setPages] = useState([]);
   const [editing, setEditing] = useState(null);
   const [toast, setToast] = useState("");
+  const [modal, setModal] = useState(null);
 
-  useEffect(() => {
+  const loadSite = useCallback(() => {
     axios.get(`${API}/sites`).then(r => {
       const s = r.data[0]; setSite(s); setPages(s ? s.order : []);
     });
   }, []);
+  useEffect(() => { loadSite(); }, [loadSite]);
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 4000); };
 
@@ -72,6 +307,12 @@ function Dashboard() {
     window.open(`${API}/dist/${site.slug}/index.html`, "_blank");
     flash(`Preview ready (${data.pages} pages)`);
   };
+  const delPage = async (slug, e) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete the "${slug}" page? This can't be undone.`)) return;
+    await axios.delete(`${API}/pages/${site.slug}/${slug}`);
+    flash("Page deleted"); loadSite();
+  };
 
   if (editing) return <Editor site={site.slug} page={editing} onBack={() => setEditing(null)} flash={flash} />;
 
@@ -80,6 +321,7 @@ function Dashboard() {
       <header className="topbar">
         <div className="brand">Website <span>Editor</span></div>
         <div className="topbar-right">
+          {user.role === "admin" && <button className="btn ghost" data-testid="admin-settings-btn" onClick={() => setModal("admin")}>Admin settings</button>}
           <span className="who" data-testid="current-user">{user.email} · {user.role}</span>
           <button className="btn ghost" data-testid="logout-btn" onClick={logout}>Logout</button>
         </div>
@@ -91,20 +333,28 @@ function Dashboard() {
             <p className="muted">{pages.length} pages · click a page to edit it live</p>
           </div>
           <div className="actions">
+            <button className="btn" data-testid="add-page-btn" onClick={() => setModal("addpage")}>+ New page</button>
+            <button className="btn" data-testid="version-history-btn" onClick={() => setModal("versions")}>Version history</button>
             <button className="btn" data-testid="preview-btn" onClick={preview}>Preview</button>
             <button className="btn primary" data-testid="publish-btn" onClick={publish}>Publish to Hostinger</button>
           </div>
         </div>
         <div className="page-grid">
           {pages.map(p => (
-            <button key={p.slug} className="page-card" data-testid={`page-${p.slug}`} onClick={() => setEditing(p.slug)}>
+            <div key={p.slug} className="page-card" data-testid={`page-${p.slug}`} onClick={() => setEditing(p.slug)}>
+              {p.slug !== "home" && (
+                <button className="page-del" data-testid={`del-page-${p.slug}`} title="Delete page" onClick={(e) => delPage(p.slug, e)}>×</button>
+              )}
               <div className="page-title">{p.title?.split("|")[0] || p.slug}</div>
               <div className="page-slug">/{p.slug === "home" ? "" : p.slug + "/"}</div>
               <div className="edit-cta">Edit page →</div>
-            </button>
+            </div>
           ))}
         </div>
       </div>
+      {modal === "addpage" && site && <AddPageModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => { setModal(null); loadSite(); }} />}
+      {modal === "versions" && site && <VersionHistory site={site.slug} flash={flash} onClose={() => setModal(null)} />}
+      {modal === "admin" && <AdminSettings flash={flash} onClose={() => setModal(null)} />}
       {toast && <div className="toast" data-testid="toast">{toast}</div>}
     </div>
   );
