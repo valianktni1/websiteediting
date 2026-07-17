@@ -18,6 +18,7 @@ MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE","false").lower() == "true"
 SITES_DIR = os.environ.get("SITES_DIR", "/app/sites_source")
 DATA_DIR = os.environ.get("DATA_DIR", "/app/site_data")
 MEDIA_DIR = os.path.join(DATA_DIR, "media")
@@ -216,11 +217,24 @@ document.addEventListener('DOMContentLoaded',function(){
 # ---------------- auth routes ----------------
 @api.post("/auth/login")
 async def login(body: Login, response: Response):
-    u = await db.users.find_one({"email":body.email.lower()})
+    email = body.email.lower()
+    att = await db.login_attempts.find_one({"email": email})
+    now = datetime.now(timezone.utc)
+    if att and att.get("fails", 0) >= 5:
+        locked_until = att.get("locked_until")
+        if locked_until and now < datetime.fromisoformat(locked_until):
+            raise HTTPException(429, "Too many attempts. Try again in a few minutes.")
+    u = await db.users.find_one({"email": email})
     if not u or not verify_pw(body.password, u["password_hash"]):
-        raise HTTPException(401,"Invalid email or password")
+        fails = (att.get("fails", 0) if att else 0) + 1
+        upd = {"fails": fails, "last": now.isoformat()}
+        if fails >= 5:
+            upd["locked_until"] = (now + timedelta(minutes=15)).isoformat()
+        await db.login_attempts.update_one({"email": email}, {"$set": upd}, upsert=True)
+        raise HTTPException(401, "Invalid email or password")
+    await db.login_attempts.delete_one({"email": email})
     tok = make_token(str(u["_id"]), u["email"], u.get("role","editor"))
-    response.set_cookie("access_token", tok, httponly=True, secure=False, samesite="lax", max_age=604800, path="/")
+    response.set_cookie("access_token", tok, httponly=True, secure=COOKIE_SECURE, samesite="lax", max_age=604800, path="/")
     return {"id":str(u["_id"]),"email":u["email"],"name":u.get("name",""),"role":u.get("role"),"site_id":u.get("site_id")}
 
 @api.post("/auth/logout")
@@ -401,6 +415,110 @@ async def publish(slug: str, u=Depends(current_user)):
     except Exception as e:
         return {"published":False,"backup":bkp,"error":str(e),
                 "message":"Render + backup OK but SFTP push failed. Check credentials/host."}
+
+class NewPage(BaseModel):
+    slug: str
+    title: str
+    from_slug: str | None = None
+
+@api.delete("/users/{uid}")
+async def delete_user(uid: str, u=Depends(require_admin)):
+    if uid == u["id"]: raise HTTPException(400,"Cannot delete yourself")
+    await db.users.delete_one({"_id":ObjectId(uid)})
+    return {"ok":True}
+
+@api.get("/sites/{slug}/sftp")
+async def get_sftp(slug: str, u=Depends(require_admin)):
+    s = await db.sites.find_one({"slug":slug})
+    if not s: raise HTTPException(404,"Site not found")
+    sf = s.get("sftp",{}) or {}
+    return {"host":sf.get("host",""),"port":sf.get("port",22),"username":sf.get("username",""),
+            "remote_path":sf.get("remote_path","/public_html"),"has_password":bool(sf.get("password"))}
+
+@api.get("/available-sites")
+async def available_sites(u=Depends(require_admin)):
+    out=[]
+    if os.path.isdir(SITES_DIR):
+        for name in sorted(os.listdir(SITES_DIR)):
+            p=os.path.join(SITES_DIR,name)
+            if os.path.isdir(p) and glob.glob(os.path.join(p,"*.html")):
+                ing = await db.sites.find_one({"slug":name})
+                out.append({"slug":name,"ingested":bool(ing),"pages":len(glob.glob(os.path.join(p,"*.html")))})
+    return out
+
+@api.post("/pages/{site}")
+async def create_page(site: str, body: NewPage, u=Depends(current_user)):
+    slug = re.sub(r'[^a-z0-9-]','-', body.slug.lower()).strip('-')
+    if not slug: raise HTTPException(400,"Invalid URL slug")
+    if slug=="home" or await db.pages.find_one({"site":site,"slug":slug}):
+        raise HTTPException(400,"A page with that URL already exists")
+    base = None
+    if body.from_slug:
+        base = await db.pages.find_one({"site":site,"slug":body.from_slug})
+    if not base:
+        base = await db.pages.find_one({"site":site,"slug":"home"})
+    if not base: raise HTTPException(404,"No template page to base on")
+    import copy
+    seo = copy.deepcopy(base.get("seo",{})); seo["title"] = body.title
+    doc = {"site":site,"slug":slug,"filename":f"{slug}.html","title":body.title,"seo":seo,
+           "template":base["template"],"regions":copy.deepcopy(base.get("regions",{})),
+           "head_assets":base.get("head_assets",[])}
+    await db.pages.insert_one(doc)
+    s = await db.sites.find_one({"slug":site})
+    order = s.get("order",[]); order.append({"slug":slug,"filename":f"{slug}.html","title":body.title})
+    await db.sites.update_one({"slug":site},{"$set":{"order":order}})
+    return {"slug":slug}
+
+@api.delete("/pages/{site}/{slug}")
+async def delete_page(site: str, slug: str, u=Depends(current_user)):
+    if slug=="home": raise HTTPException(400,"Cannot delete the home page")
+    await db.pages.delete_one({"site":site,"slug":slug})
+    s = await db.sites.find_one({"slug":site})
+    order = [o for o in s.get("order",[]) if o["slug"]!=slug]
+    await db.sites.update_one({"slug":site},{"$set":{"order":order}})
+    return {"ok":True}
+
+@api.get("/sites/{slug}/backups")
+async def list_backups(slug: str, u=Depends(current_user)):
+    out=[]
+    for f in sorted(glob.glob(os.path.join(BACKUP_DIR,f"{slug}-*.zip")), reverse=True):
+        st=os.stat(f)
+        out.append({"name":os.path.basename(f),"size":st.st_size,
+                    "created":datetime.fromtimestamp(st.st_mtime,timezone.utc).isoformat()})
+    return out
+
+@api.post("/sites/{slug}/restore")
+async def restore(slug: str, body: dict, u=Depends(current_user)):
+    import tempfile
+    fp = os.path.join(BACKUP_DIR, os.path.basename(body.get("name","")))
+    if not os.path.isfile(fp): raise HTTPException(404,"Backup not found")
+    tmp = tempfile.mkdtemp()
+    with zipfile.ZipFile(fp) as z: z.extractall(tmp)
+    s = await db.sites.find_one({"slug":slug})
+    sftp = (s or {}).get("sftp")
+    if not sftp or not sftp.get("host"):
+        shutil.rmtree(tmp, ignore_errors=True)
+        return {"restored":False,"message":"Backup unpacked, but SFTP isn't configured — set credentials to push the rollback live."}
+    try:
+        import paramiko
+        t=paramiko.Transport((sftp["host"],int(sftp.get("port",22)))); t.connect(username=sftp["username"],password=sftp["password"])
+        sf=paramiko.SFTPClient.from_transport(t); remote=sftp.get("remote_path","/public_html")
+        def _mk(rp):
+            cur=""
+            for part in rp.strip("/").split("/"):
+                cur+="/"+part
+                try: sf.stat(cur)
+                except IOError: sf.mkdir(cur)
+        for root,_,files in os.walk(tmp):
+            rel=os.path.relpath(root,tmp); rdir=remote if rel=="." else f"{remote}/{rel}".replace("\\","/")
+            _mk(rdir)
+            for f in files: sf.put(os.path.join(root,f), f"{rdir}/{f}")
+        sf.close(); t.close()
+        return {"restored":True,"message":f"Rolled back to {body.get('name')} and pushed live."}
+    except Exception as e:
+        return {"restored":False,"error":str(e),"message":"Rollback push failed — check SFTP details."}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 app.include_router(api)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
