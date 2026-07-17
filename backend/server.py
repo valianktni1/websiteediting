@@ -83,7 +83,7 @@ class SftpSettings(BaseModel):
     port: int = 22
     username: str = ""
     password: str = ""
-    remote_path: str = "/public_html"
+    remote_path: str = "public_html"
 
 # ---------------- ingestion ----------------
 def _clean_links(s):
@@ -377,6 +377,34 @@ async def set_sftp(slug: str, body: SftpSettings, u=Depends(require_admin)):
     await db.sites.update_one({"slug":slug},{"$set":{"sftp":data}})
     return {"ok":True}
 
+def _sftp_push(sftp_conf, local_root):
+    import paramiko
+    t = paramiko.Transport((sftp_conf["host"], int(sftp_conf.get("port", 22))))
+    t.connect(username=sftp_conf["username"], password=sftp_conf["password"])
+    sf = paramiko.SFTPClient.from_transport(t)
+    try:
+        remote = sftp_conf.get("remote_path", "public_html") or "public_html"
+        if not remote.startswith("/"):
+            home = sf.normalize(".").rstrip("/")
+            remote = f"{home}/{remote.strip('/')}"
+        else:
+            remote = remote.rstrip("/")
+        def _mkdirs(rpath):
+            parts = rpath.strip("/").split("/"); cur = ""
+            for p in parts:
+                cur += "/" + p
+                try: sf.stat(cur)
+                except IOError: sf.mkdir(cur)
+        _mkdirs(remote)
+        for root, _, files in os.walk(local_root):
+            rel = os.path.relpath(root, local_root)
+            rdir = remote if rel == "." else f"{remote}/{rel}".replace("\\", "/")
+            _mkdirs(rdir)
+            for f in files:
+                sf.put(os.path.join(root, f), f"{rdir}/{f}")
+    finally:
+        sf.close(); t.close()
+
 @api.post("/sites/{slug}/publish")
 async def publish(slug: str, u=Depends(current_user)):
     s = await db.sites.find_one({"slug":slug})
@@ -394,31 +422,13 @@ async def publish(slug: str, u=Depends(current_user)):
     if not sftp or not sftp.get("host"):
         return {"published":False,"backup":bkp,"dist":out,
                 "message":"Rendered + backed up. SFTP not configured yet — set Hostinger SFTP credentials to push live."}
-    # SFTP upload
     try:
-        import paramiko
-        t=paramiko.Transport((sftp["host"], int(sftp.get("port",22))))
-        t.connect(username=sftp["username"], password=sftp["password"])
-        sf=paramiko.SFTPClient.from_transport(t)
-        remote=sftp.get("remote_path","/public_html")
-        def _mkdirs(rpath):
-            parts=rpath.strip("/").split("/"); cur=""
-            for p in parts:
-                cur+="/"+p
-                try: sf.stat(cur)
-                except IOError: sf.mkdir(cur)
-        for root,_,files in os.walk(out):
-            rel=os.path.relpath(root,out)
-            rdir=remote if rel=="." else f"{remote}/{rel}".replace("\\","/")
-            _mkdirs(rdir)
-            for f in files:
-                sf.put(os.path.join(root,f), f"{rdir}/{f}")
-        sf.close(); t.close()
+        _sftp_push(sftp, out)
         await db.sites.update_one({"_id":s["_id"]},{"$set":{"last_published":ts}})
-        return {"published":True,"backup":bkp,"files_pushed":True,"message":"Published to Hostinger."}
+        return {"published":True,"backup":bkp,"files_pushed":True,"message":"Published live to Hostinger."}
     except Exception as e:
         return {"published":False,"backup":bkp,"error":str(e),
-                "message":"Render + backup OK but SFTP push failed. Check credentials/host."}
+                "message":f"Render + backup OK but SFTP push failed: {e}"}
 
 class NewPage(BaseModel):
     slug: str
@@ -437,7 +447,7 @@ async def get_sftp(slug: str, u=Depends(require_admin)):
     if not s: raise HTTPException(404,"Site not found")
     sf = s.get("sftp",{}) or {}
     return {"host":sf.get("host",""),"port":sf.get("port",22),"username":sf.get("username",""),
-            "remote_path":sf.get("remote_path","/public_html"),"has_password":bool(sf.get("password"))}
+            "remote_path":sf.get("remote_path","public_html"),"has_password":bool(sf.get("password"))}
 
 @api.get("/available-sites")
 async def available_sites(u=Depends(require_admin)):
@@ -497,7 +507,7 @@ async def list_backups(slug: str, u=Depends(current_user)):
     return out
 
 @api.post("/sites/{slug}/restore")
-async def restore(slug: str, body: dict, u=Depends(current_user)):
+async def restore(slug: str, body: dict, u=Depends(require_admin)):
     import tempfile
     fp = os.path.join(BACKUP_DIR, os.path.basename(body.get("name","")))
     if not os.path.isfile(fp): raise HTTPException(404,"Backup not found")
@@ -509,23 +519,10 @@ async def restore(slug: str, body: dict, u=Depends(current_user)):
         shutil.rmtree(tmp, ignore_errors=True)
         return {"restored":False,"message":"Backup unpacked, but SFTP isn't configured — set credentials to push the rollback live."}
     try:
-        import paramiko
-        t=paramiko.Transport((sftp["host"],int(sftp.get("port",22)))); t.connect(username=sftp["username"],password=sftp["password"])
-        sf=paramiko.SFTPClient.from_transport(t); remote=sftp.get("remote_path","/public_html")
-        def _mk(rp):
-            cur=""
-            for part in rp.strip("/").split("/"):
-                cur+="/"+part
-                try: sf.stat(cur)
-                except IOError: sf.mkdir(cur)
-        for root,_,files in os.walk(tmp):
-            rel=os.path.relpath(root,tmp); rdir=remote if rel=="." else f"{remote}/{rel}".replace("\\","/")
-            _mk(rdir)
-            for f in files: sf.put(os.path.join(root,f), f"{rdir}/{f}")
-        sf.close(); t.close()
+        _sftp_push(sftp, tmp)
         return {"restored":True,"message":f"Rolled back to {body.get('name')} and pushed live."}
     except Exception as e:
-        return {"restored":False,"error":str(e),"message":"Rollback push failed — check SFTP details."}
+        return {"restored":False,"error":str(e),"message":f"Rollback push failed: {e}"}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

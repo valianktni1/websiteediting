@@ -212,7 +212,7 @@ function UsersTab({ flash }) {
 function SftpTab({ flash }) {
   const [sites, setSites] = useState([]);
   const [slug, setSlug] = useState("");
-  const [f, setF] = useState({ host: "", port: 22, username: "", password: "", remote_path: "/public_html" });
+  const [f, setF] = useState({ host: "", port: 22, username: "", password: "", remote_path: "public_html" });
   const [hasPw, setHasPw] = useState(false);
   useEffect(() => { axios.get(`${API}/sites`).then(r => { setSites(r.data); if (r.data[0]) setSlug(r.data[0].slug); }); }, []);
   useEffect(() => {
