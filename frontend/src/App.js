@@ -226,6 +226,13 @@ function SftpTab({ flash }) {
     await axios.put(`${API}/sites/${slug}/sftp`, f);
     flash("SFTP settings saved"); setHasPw(!!f.password || hasPw);
   };
+  const [testMsg, setTestMsg] = useState(""); const [testing, setTesting] = useState(false);
+  const test = async () => {
+    setTesting(true); setTestMsg("");
+    try { const { data } = await axios.post(`${API}/sites/${slug}/sftp/test`, f); setTestMsg((data.ok ? "✓ " : "✗ ") + data.message); }
+    catch (e) { setTestMsg("✗ " + (e.response?.data?.detail || "Test failed")); }
+    finally { setTesting(false); }
+  };
   return (
     <div className="admin-form">
       <label>Site</label>
@@ -242,7 +249,11 @@ function SftpTab({ flash }) {
       <input data-testid="sftp-pass" type="password" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} />
       <label>Remote path</label>
       <input data-testid="sftp-path" value={f.remote_path} onChange={e => setF({ ...f, remote_path: e.target.value })} />
-      <button className="btn primary" data-testid="sftp-save" disabled={!slug} onClick={save}>Save SFTP settings</button>
+      {testMsg && <div className={`test-msg ${testMsg.startsWith("✓") ? "ok" : "bad"}`} data-testid="sftp-test-result">{testMsg}</div>}
+      <div className="sftp-btns">
+        <button className="btn" data-testid="sftp-test" disabled={!slug || testing} onClick={test}>{testing ? "Testing…" : "Test connection"}</button>
+        <button className="btn primary" data-testid="sftp-save" disabled={!slug} onClick={save}>Save SFTP settings</button>
+      </div>
     </div>
   );
 }

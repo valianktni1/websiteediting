@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-import os, io, re, json, shutil, zipfile, glob
+import os, io, re, json, shutil, zipfile, glob, socket, asyncio
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -377,18 +377,54 @@ async def set_sftp(slug: str, body: SftpSettings, u=Depends(require_admin)):
     await db.sites.update_one({"slug":slug},{"$set":{"sftp":data}})
     return {"ok":True}
 
-def _sftp_push(sftp_conf, local_root):
+@api.post("/sites/{slug}/sftp/test")
+async def test_sftp(slug: str, body: SftpSettings, u=Depends(require_admin)):
+    conf = body.model_dump()
+    if not conf.get("password"):
+        existing = await db.sites.find_one({"slug":slug})
+        conf["password"] = (existing or {}).get("sftp",{}).get("password","")
+    if not conf.get("host") or not conf.get("username") or not conf.get("password"):
+        return {"ok":False,"message":"Enter host, username and password first (save the password once, then you can test)."}
+    return await asyncio.to_thread(_do_test, conf)
+
+def _sftp_connect(conf, timeout=15):
     import paramiko
-    t = paramiko.Transport((sftp_conf["host"], int(sftp_conf.get("port", 22))))
-    t.connect(username=sftp_conf["username"], password=sftp_conf["password"])
+    sock = socket.create_connection((conf["host"], int(conf.get("port", 22))), timeout=timeout)
+    t = paramiko.Transport(sock)
+    t.banner_timeout = timeout
+    t.connect(username=conf["username"], password=conf["password"])
     sf = paramiko.SFTPClient.from_transport(t)
+    return t, sf
+
+def _resolve_remote(sf, conf):
+    remote = conf.get("remote_path", "public_html") or "public_html"
+    if not remote.startswith("/"):
+        return f"{sf.normalize('.').rstrip('/')}/{remote.strip('/')}"
+    return remote.rstrip("/")
+
+def _do_test(conf):
     try:
-        remote = sftp_conf.get("remote_path", "public_html") or "public_html"
-        if not remote.startswith("/"):
-            home = sf.normalize(".").rstrip("/")
-            remote = f"{home}/{remote.strip('/')}"
-        else:
-            remote = remote.rstrip("/")
+        t, sf = _sftp_connect(conf)
+        try:
+            remote = _resolve_remote(sf, conf)
+            try:
+                items = sf.listdir(remote); found = True
+            except IOError:
+                items = []; found = False
+        finally:
+            sf.close(); t.close()
+        if found:
+            return {"ok":True,"message":f"Connected. Found {len(items)} items in {remote}. Ready to publish."}
+        return {"ok":True,"message":f"Connected, but {remote} doesn't exist yet — it will be created on first publish."}
+    except socket.timeout:
+        return {"ok":False,"message":"Connection timed out — check the host and port (Hostinger SFTP is usually port 65002)."}
+    except Exception as e:
+        return {"ok":False,"message":f"Connection failed: {e}"}
+
+def _sftp_push(sftp_conf, local_root):
+    t, sf = _sftp_connect(sftp_conf)
+    try:
+        remote = _resolve_remote(sf, sftp_conf)
         def _mkdirs(rpath):
             parts = rpath.strip("/").split("/"); cur = ""
             for p in parts:
@@ -423,7 +459,7 @@ async def publish(slug: str, u=Depends(current_user)):
         return {"published":False,"backup":bkp,"dist":out,
                 "message":"Rendered + backed up. SFTP not configured yet — set Hostinger SFTP credentials to push live."}
     try:
-        _sftp_push(sftp, out)
+        await asyncio.to_thread(_sftp_push, sftp, out)
         await db.sites.update_one({"_id":s["_id"]},{"$set":{"last_published":ts}})
         return {"published":True,"backup":bkp,"files_pushed":True,"message":"Published live to Hostinger."}
     except Exception as e:
@@ -519,7 +555,7 @@ async def restore(slug: str, body: dict, u=Depends(require_admin)):
         shutil.rmtree(tmp, ignore_errors=True)
         return {"restored":False,"message":"Backup unpacked, but SFTP isn't configured — set credentials to push the rollback live."}
     try:
-        _sftp_push(sftp, tmp)
+        await asyncio.to_thread(_sftp_push, sftp, tmp)
         return {"restored":True,"message":f"Rolled back to {body.get('name')} and pushed live."}
     except Exception as e:
         return {"restored":False,"error":str(e),"message":f"Rollback push failed: {e}"}

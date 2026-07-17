@@ -83,3 +83,16 @@ pytest + 12/12 frontend E2E (iteration_2.json).
 - STILL MOCKED: SFTP publish/restore (no live Hostinger creds). publish=false/restore=false with a
   clear "SFTP not configured" message is EXPECTED until creds entered in Admin > SFTP tab.
 - Backlog: cookie secure=True + specific CORS in prod, 2FA, editor iframe per-site scoping.
+
+## 2026-07 (fork) — Hostinger SFTP go-live + Test Connection
+- User located their Hostinger FTP/SSH details (IP 77.37.37.182, host wifetobe.org, user
+  u897891218.wifetobe.org, SSH/SFTP port 65002, path public_html).
+- Made publisher Hostinger-correct: SFTP now uses socket connect timeout (15s) and resolves
+  home-RELATIVE remote paths (e.g. "public_html") via sf.normalize('.'), not absolute-from-root.
+- Added "Test connection" button + POST /api/sites/{slug}/sftp/test (admin-only): connects, lists
+  remote dir, returns friendly ok/fail message.
+- CRITICAL FIX: paramiko is blocking — all SFTP work (test/publish/restore) now runs via
+  asyncio.to_thread so a bad host can no longer hang/500 the event loop (was causing 502s).
+  Verified: unroutable host fails in 15s with a clear message and server stays responsive.
+- Default remote_path is now "public_html" (Hostinger-relative). SFTP creds NOT stored in preview
+  (user enters their real password in the UI to go live).

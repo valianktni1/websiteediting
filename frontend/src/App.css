@@ -94,3 +94,7 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .admin-form .btn.primary{ margin-top:16px; }
 .btn.danger{ border-color:#5a3232; color:#ff8a8a; }
 .btn.danger:hover{ border-color:#ff8a8a; }
+.sftp-btns{ display:flex; gap:10px; margin-top:18px; }
+.test-msg{ margin-top:14px; padding:10px 12px; border-radius:9px; font-size:.85rem; line-height:1.4; }
+.test-msg.ok{ background:rgba(138,154,123,.14); border:1px solid var(--sage); color:#bcd0ad; }
+.test-msg.bad{ background:rgba(255,138,138,.1); border:1px solid #5a3232; color:#ff9a9a; }
