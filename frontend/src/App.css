@@ -33,6 +33,10 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .dash{ max-width:1100px; margin:0 auto; padding:34px 22px; }
 .dash-head{ display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:26px; gap:20px; flex-wrap:wrap; }
 .dash-head h1{ font-family:'Cormorant Garamond',serif; font-weight:600; font-size:2.2rem; }
+.site-select-row{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.site-switcher{ background:#171a20; border:1px solid var(--line); color:#e9ecf1; padding:8px 12px; border-radius:9px; font-family:inherit; font-size:.9rem; cursor:pointer; }
+.site-switcher:focus{ outline:none; border-color:var(--gold); }
+.empty-state{ background:var(--panel); border:1px dashed var(--line); border-radius:14px; padding:40px; text-align:center; margin-top:10px; }
 .muted{ color:var(--muted); font-size:.9rem; }
 .actions{ display:flex; gap:10px; }
 .page-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px; }

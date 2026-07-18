@@ -60,7 +60,11 @@ async def current_user(request: Request):
     except jwt.InvalidTokenError: raise HTTPException(401,"Invalid token")
 
 async def require_admin(u=Depends(current_user)):
-    if u.get("role")!="admin": raise HTTPException(403,"Admin only")
+    if u.get("role") not in ("admin", "superadmin"): raise HTTPException(403,"Admin only")
+    return u
+
+async def require_super(u=Depends(current_user)):
+    if u.get("role") != "superadmin": raise HTTPException(403,"Super admin only")
     return u
 
 # ---------------- models ----------------
@@ -85,6 +89,16 @@ class SftpSettings(BaseModel):
     password: str = ""
     remote_path: str = "public_html"
     domain: str = ""
+
+class AddSite(BaseModel):
+    slug: str
+    name: str = ""
+    domain: str = ""
+    host: str
+    port: int = 22
+    username: str
+    password: str
+    remote_path: str = "public_html"
 
 # ---------------- ingestion ----------------
 def _clean_links(s):
@@ -473,6 +487,64 @@ def _sftp_push(sftp_conf, local_root, expect_domain=""):
     finally:
         sf.close(); t.close()
 
+def _download_dir(sf, rdir, ldir, budget):
+    import stat
+    os.makedirs(ldir, exist_ok=True)
+    for entry in sf.listdir_attr(rdir):
+        rp = f"{rdir}/{entry.filename}"
+        lp = os.path.join(ldir, entry.filename)
+        if stat.S_ISDIR(entry.st_mode):
+            _download_dir(sf, rp, lp, budget)
+        else:
+            budget["files"] += 1
+            budget["bytes"] += (entry.st_size or 0)
+            if budget["files"] > 5000 or budget["bytes"] > 500 * 1024 * 1024:
+                raise ValueError("Site is too large to pull (over 5000 files or 500MB). Narrow the remote path to the site's public_html.")
+            sf.get(rp, lp)
+
+def _sftp_pull(sftp_conf, local_root):
+    t, sf = _sftp_connect(sftp_conf)
+    try:
+        remote = _resolve_remote(sf, sftp_conf)
+        try:
+            sf.stat(remote)
+        except IOError:
+            raise ValueError(f"Remote folder not found: {remote}. Check the path is this site's own public_html.")
+        budget = {"files": 0, "bytes": 0}
+        _download_dir(sf, remote, local_root, budget)
+        return budget["files"]
+    finally:
+        sf.close(); t.close()
+
+@api.post("/sites/add")
+async def add_site(body: AddSite, u=Depends(require_super)):
+    slug = re.sub(r'[^a-z0-9-]', '-', body.slug.lower()).strip('-')
+    if not slug: raise HTTPException(400, "Enter a valid site name (letters, numbers, hyphens).")
+    if await db.sites.find_one({"slug": slug}):
+        raise HTTPException(400, f"A site called '{slug}' already exists.")
+    if not body.host or not body.username or not body.password:
+        raise HTTPException(400, "Enter the SFTP host, username and password.")
+    conf = {"host": body.host, "port": body.port, "username": body.username,
+            "password": body.password, "remote_path": body.remote_path or "public_html"}
+    local = os.path.join(SITES_DIR, slug)
+    if os.path.exists(local): shutil.rmtree(local, ignore_errors=True)
+    try:
+        pulled = await asyncio.to_thread(_sftp_pull, conf, local)
+    except socket.timeout:
+        shutil.rmtree(local, ignore_errors=True)
+        return {"ok": False, "message": "Connection timed out — check the host and port (Hostinger SFTP is usually 65002)."}
+    except Exception as e:
+        shutil.rmtree(local, ignore_errors=True)
+        return {"ok": False, "message": f"Couldn't pull the site: {e}"}
+    n = await ingest_site(slug)
+    if n == 0:
+        shutil.rmtree(local, ignore_errors=True)
+        await db.sites.delete_one({"slug": slug})
+        return {"ok": False, "message": f"Pulled {pulled} file(s) but found no .html pages in {conf['remote_path']}. Point the path at the folder that holds index.html."}
+    await db.sites.update_one({"slug": slug}, {"$set": {
+        "name": body.name or slug, "domain": (body.domain or "").strip().lower(), "sftp": conf}})
+    return {"ok": True, "ingested": n, "pulled": pulled, "slug": slug}
+
 @api.post("/sites/{slug}/publish")
 async def publish(slug: str, u=Depends(current_user)):
     s = await db.sites.find_one({"slug":slug})
@@ -612,7 +684,9 @@ async def startup():
     ex = await db.users.find_one({"email": admin_email})
     if not ex:
         await db.users.insert_one({"email": admin_email, "password_hash": hash_pw(admin_pw),
-            "name": admin_name, "role": "admin", "site_id": None, "created_at": datetime.now(timezone.utc).isoformat()})
+            "name": admin_name, "role": "superadmin", "site_id": None, "created_at": datetime.now(timezone.utc).isoformat()})
+    elif ex.get("role") != "superadmin":
+        await db.users.update_one({"_id": ex["_id"]}, {"$set": {"role": "superadmin"}})
     # auto-ingest any site folder (with .html files) that isn't ingested yet
     if os.path.isdir(SITES_DIR):
         for name in sorted(os.listdir(SITES_DIR)):

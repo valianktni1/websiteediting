@@ -145,7 +145,7 @@ function VersionHistory({ site, onClose, flash }) {
   );
 }
 
-function AdminSettings({ onClose, flash }) {
+function AdminSettings({ onClose, flash, onSitesChanged }) {
   const [tab, setTab] = useState("users");
   return (
     <Modal title="Admin settings" onClose={onClose} wide>
@@ -156,7 +156,7 @@ function AdminSettings({ onClose, flash }) {
       </div>
       {tab === "users" && <UsersTab flash={flash} />}
       {tab === "sftp" && <SftpTab flash={flash} />}
-      {tab === "sites" && <SitesTab flash={flash} />}
+      {tab === "sites" && <SitesTab flash={flash} onSitesChanged={onSitesChanged} />}
     </Modal>
   );
 }
@@ -273,22 +273,68 @@ function SftpTab({ flash }) {
   );
 }
 
-function SitesTab({ flash }) {
+function SitesTab({ flash, onSitesChanged }) {
+  const { user } = useAuth();
   const [avail, setAvail] = useState([]);
   const [busy, setBusy] = useState("");
   const load = () => axios.get(`${API}/available-sites`).then(r => setAvail(r.data));
   useEffect(() => { load(); }, []);
   const ingest = async (slug) => {
     setBusy(slug);
-    try { const { data } = await axios.post(`${API}/sites/${slug}/ingest`); flash(`Ingested ${data.ingested} pages`); load(); }
+    try { const { data } = await axios.post(`${API}/sites/${slug}/ingest`); flash(`Ingested ${data.ingested} pages`); load(); onSitesChanged && onSitesChanged(); }
     catch (e) { flash("Ingest failed"); }
     finally { setBusy(""); }
   };
+
+  const [f, setF] = useState({ slug: "", name: "", domain: "", host: "", port: 65002, username: "", password: "", remote_path: "" });
+  const [adding, setAdding] = useState(false);
+  const [addMsg, setAddMsg] = useState("");
+  const addSite = async () => {
+    setAdding(true); setAddMsg("");
+    try {
+      const { data } = await axios.post(`${API}/sites/add`, f);
+      if (data.ok) {
+        setAddMsg(`✓ Pulled ${data.pulled} files and ingested ${data.ingested} pages as "${data.slug}".`);
+        setF({ slug: "", name: "", domain: "", host: "", port: 65002, username: "", password: "", remote_path: "" });
+        load(); onSitesChanged && onSitesChanged();
+      } else {
+        setAddMsg("✗ " + data.message);
+      }
+    } catch (e) { setAddMsg("✗ " + (e.response?.data?.detail || "Could not add site")); }
+    finally { setAdding(false); }
+  };
+
   return (
     <div>
-      <p className="hint">Drop a built static site folder into the app's <code>sites_source</code> directory and it will appear here to ingest.</p>
+      {user.role === "superadmin" && (
+        <div className="admin-form" style={{ borderTop: "none", paddingTop: 0, marginBottom: 24 }}>
+          <h4>Add a new site (pull from your server)</h4>
+          <p className="hint">Enter the site's SFTP details. The app connects, downloads every file already on that server, and ingests the pages — ready to edit and publish. No uploads or redeploys.</p>
+          <label>Site name</label>
+          <input data-testid="as-name" value={f.name} placeholder="Wife To Be (co.uk)" onChange={e => setF({ ...f, name: e.target.value, slug: f.slug || e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") })} />
+          <label>Short ID (URL-safe)</label>
+          <input data-testid="as-slug" value={f.slug} placeholder="wifetobe-couk" onChange={e => setF({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} />
+          <label>Locked domain 🔒</label>
+          <input data-testid="as-domain" value={f.domain} placeholder="wifetobe.co.uk" onChange={e => setF({ ...f, domain: e.target.value.trim().toLowerCase() })} />
+          <label>SFTP host</label>
+          <input data-testid="as-host" value={f.host} placeholder="77.37.37.182" onChange={e => setF({ ...f, host: e.target.value })} />
+          <label>Port</label>
+          <input data-testid="as-port" type="number" value={f.port} onChange={e => setF({ ...f, port: parseInt(e.target.value || "65002") })} />
+          <label>Username</label>
+          <input data-testid="as-user" value={f.username} onChange={e => setF({ ...f, username: e.target.value })} />
+          <label>Password</label>
+          <input data-testid="as-pass" type="password" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} />
+          <label>Remote path (this site's own folder)</label>
+          <input data-testid="as-path" value={f.remote_path} placeholder="/home/USER/domains/wifetobe.co.uk/public_html" onChange={e => setF({ ...f, remote_path: e.target.value })} />
+          {addMsg && <div className={`test-msg ${addMsg.startsWith("✓") ? "ok" : "bad"}`} data-testid="as-result">{addMsg}</div>}
+          <button className="btn primary" data-testid="as-submit" disabled={adding || !f.slug || !f.host || !f.username || !f.password} onClick={addSite}>
+            {adding ? "Pulling & ingesting… (may take a minute)" : "Add site & pull from server"}
+          </button>
+        </div>
+      )}
+      <h4 style={{ marginBottom: 10 }}>Sites on this app</h4>
       <div className="admin-list" data-testid="available-sites">
-        {avail.length === 0 && <div className="muted">No source sites found.</div>}
+        {avail.length === 0 && <div className="muted">No sites yet.</div>}
         {avail.map(s => (
           <div className="admin-row" key={s.slug} data-testid={`avail-${s.slug}`}>
             <div>
@@ -353,18 +399,32 @@ function PublishConfirm({ site, onClose, flash }) {
 
 function Dashboard() {
   const { user, logout } = useAuth();
+  const [sites, setSites] = useState([]);
   const [site, setSite] = useState(null);
   const [pages, setPages] = useState([]);
   const [editing, setEditing] = useState(null);
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState(null);
 
-  const loadSite = useCallback(() => {
+  const loadSites = useCallback((preferSlug) => {
     axios.get(`${API}/sites`).then(r => {
-      const s = r.data[0]; setSite(s); setPages(s ? s.order : []);
+      let list = r.data;
+      if (user.role === "editor" && user.site_id) list = list.filter(s => s.slug === user.site_id);
+      setSites(list);
+      setSite(prev => {
+        const want = preferSlug || prev?.slug;
+        const found = list.find(s => s.slug === want) || list[0] || null;
+        setPages(found ? found.order : []);
+        return found;
+      });
     });
-  }, []);
-  useEffect(() => { loadSite(); }, [loadSite]);
+  }, [user]);
+  useEffect(() => { loadSites(); }, [loadSites]);
+
+  const switchSite = (slug) => {
+    const s = sites.find(x => x.slug === slug);
+    setSite(s); setPages(s ? s.order : []);
+  };
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 4000); };
 
@@ -378,8 +438,9 @@ function Dashboard() {
     e.stopPropagation();
     if (!window.confirm(`Delete the "${slug}" page? This can't be undone.`)) return;
     await axios.delete(`${API}/pages/${site.slug}/${slug}`);
-    flash("Page deleted"); loadSite();
+    flash("Page deleted"); loadSites(site.slug);
   };
+  const isAdmin = user.role === "admin" || user.role === "superadmin";
 
   if (editing) return <Editor site={site.slug} page={editing} onBack={() => setEditing(null)} flash={flash} />;
 
@@ -388,7 +449,7 @@ function Dashboard() {
       <header className="topbar">
         <div className="brand">Ivory Digital <span>Editor</span></div>
         <div className="topbar-right">
-          {user.role === "admin" && <button className="btn ghost" data-testid="admin-settings-btn" onClick={() => setModal("admin")}>Admin settings</button>}
+          {isAdmin && <button className="btn ghost" data-testid="admin-settings-btn" onClick={() => setModal("admin")}>Admin settings</button>}
           <span className="who" data-testid="current-user">{user.email} · {user.role}</span>
           <button className="btn ghost" data-testid="logout-btn" onClick={logout}>Logout</button>
         </div>
@@ -396,16 +457,30 @@ function Dashboard() {
       <div className="dash">
         <div className="dash-head">
           <div>
-            <h1>{site?.name || "Site"}</h1>
-            <p className="muted">{pages.length} pages · click a page to edit it live</p>
+            <div className="site-select-row">
+              <h1>{site?.name || site?.slug || "No site yet"}</h1>
+              {sites.length > 1 && (
+                <select className="site-switcher" data-testid="site-switcher" value={site?.slug || ""} onChange={e => switchSite(e.target.value)}>
+                  {sites.map(s => <option key={s.slug} value={s.slug}>{s.name || s.slug}</option>)}
+                </select>
+              )}
+            </div>
+            <p className="muted">{site?.domain ? `${site.domain} · ` : ""}{pages.length} pages · click a page to edit it live</p>
           </div>
-          <div className="actions">
-            <button className="btn" data-testid="add-page-btn" onClick={() => setModal("addpage")}>+ New page</button>
-            <button className="btn" data-testid="version-history-btn" onClick={() => setModal("versions")}>Version history</button>
-            <button className="btn" data-testid="preview-btn" onClick={preview}>Preview</button>
-            <button className="btn primary" data-testid="publish-btn" onClick={() => setModal("publish")}>Publish to Hostinger</button>
-          </div>
+          {site && (
+            <div className="actions">
+              <button className="btn" data-testid="add-page-btn" onClick={() => setModal("addpage")}>+ New page</button>
+              <button className="btn" data-testid="version-history-btn" onClick={() => setModal("versions")}>Version history</button>
+              <button className="btn" data-testid="preview-btn" onClick={preview}>Preview</button>
+              <button className="btn primary" data-testid="publish-btn" onClick={() => setModal("publish")}>Publish to Hostinger</button>
+            </div>
+          )}
         </div>
+        {!site && (
+          <div className="empty-state" data-testid="no-site">
+            <p className="muted">No sites yet.{user.role === "superadmin" ? " Open Admin settings → Sites to add one by pulling it from your server." : " Ask your administrator to set up your site."}</p>
+          </div>
+        )}
         <div className="page-grid">
           {pages.map(p => (
             <div key={p.slug} className="page-card" data-testid={`page-${p.slug}`} onClick={() => setEditing(p.slug)}>
@@ -419,9 +494,9 @@ function Dashboard() {
           ))}
         </div>
       </div>
-      {modal === "addpage" && site && <AddPageModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => { setModal(null); loadSite(); }} />}
+      {modal === "addpage" && site && <AddPageModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => { setModal(null); loadSites(site.slug); }} />}
       {modal === "versions" && site && <VersionHistory site={site.slug} flash={flash} onClose={() => setModal(null)} />}
-      {modal === "admin" && <AdminSettings flash={flash} onClose={() => setModal(null)} />}
+      {modal === "admin" && <AdminSettings flash={flash} onClose={() => setModal(null)} onSitesChanged={() => loadSites()} />}
       {modal === "publish" && site && <PublishConfirm site={site.slug} flash={flash} onClose={() => setModal(null)} />}
       {toast && <div className="toast" data-testid="toast">{toast}</div>}
       <Footer />

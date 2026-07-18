@@ -37,7 +37,7 @@ class TestAuth:
         assert r.status_code == 200
         data = r.json()
         assert data["email"] == ADMIN_EMAIL
-        assert data["role"] == "admin"
+        assert data["role"] in ("admin", "superadmin")
 
     def test_me_unauth(self):
         r = requests.get(f"{BASE}/api/auth/me")

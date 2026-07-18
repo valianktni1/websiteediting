@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 5: super-admin add-site (SFTP pull), multi-site switcher, role hierarchy tested end-to-end. FOUND & FIXED a critical regression: the @api.post('/sites/{slug}/publish') decorator was accidentally deleted when POST /sites/add was added — publish endpoint returned 404. Restored the decorator; publish now works (200, renders + backs up when SFTP not configured). 8 new backend tests + 43 pre-existing = 51/51 pass. Frontend verified for super-admin, regular admin, and site-scoped editor. State restored to preview-clean.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_add_site_multi.py",
+    "/app/backend/tests/test_domain_lock.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_iter5.xml",
+    "/app/test_reports/pytest/pytest_iter5_all.xml"
+  ],
+  "action_items": [
+    "None open. Publish-decorator regression has been fixed in-place by testing agent (single-line change in /app/backend/server.py at what was line 546-547). Please review the fix on the main agent side and keep the decorator when adding future endpoints near /sites/add."
+  ],
+  "critical_code_review_comments": [
+    "REGRESSION FIXED: server.py had `async def publish(slug: str, ...)` defined WITHOUT its `@api.post('/sites/{slug}/publish')` decorator (lost when /sites/add was inserted immediately above). Result: POST /api/sites/wifetobe/publish returned 404 in production. Added the decorator back; verified 200. Recommend a smoke test in CI that asserts every documented route path is reachable to catch this class of bug early.",
+    "server.py L455 `path_ok = (not domain) or (domain in remote.lower())` — good defensive default when remote_path is blank string; still returns 'path_ok:true' for un-locked sites.",
+    "/api/sites/add correctly self-cleans (removes disk dir + DB row) when pulled folder contains no .html — verified against rebex.net. Good UX; no orphan sites accumulate on wrong path.",
+    "AddSite pydantic model marks host/username/password as required strings but allows empty strings — the explicit 400 in add_site handles empty strings so total UX is safe.",
+    "Front-end Dashboard scoping (App.js L412) filters sites by user.site_id BEFORE rendering the switcher — good; superadmin/admin see all, editor sees only their scoped site. Verified visually.",
+    "The 'Sites' add-site form is gated by `user.role === 'superadmin'` (App.js L309). Regular admin correctly does NOT see the form but still sees the 'Sites on this app' list & Re-ingest — correct RBAC.",
+    "Nit: server.py imports `paramiko`/`sftp` lazily inside helpers; consider a startup ping to log 'sftp module unavailable' if paramiko fails to import. Not a bug.",
+    "Nit: /api/sites/add returns HTTP 200 with `ok:false` for pull failures (rather than 4xx). This is intentional so the UI can show the message inline, but a small comment above the endpoint explaining this convention would help future maintainers."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (restored missing @api.post('/sites/{slug}/publish') decorator)",
+    "/app/backend/tests/test_add_site_multi.py (new — 8 tests, single class to satisfy xdist loadscope)",
+    "/app/backend/tests/backend_test.py (updated stale role assertion admin->{admin,superadmin})"
+  ],
+  "success_rate": {"backend": "100% (51/51)", "frontend": "100% (all spec'd items verified)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 — role is now 'superadmin' per startup migration. Verified via GET /api/auth/me.",
+  "seed_data_creation": "Created ephemeral test admin + editor users during RBAC/scoping tests; all deleted in fixture teardown / manual cleanup. Verified 'testpull' site does NOT remain after add-site pipeline test (self-cleaned because rebex.net /pub/example has no .html). Final /api/sites state: [wifetobe (14 pages, domain wifetobe.org, host blank), demo-couk (2 pages)] — matches spec.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_add_site_multi.py MUST stay in ONE class (TestAddSiteMultiSuite) because pytest.ini forces -n 2 --dist loadscope; splitting into multiple classes would concurrently mutate wifetobe SFTP state across workers. rebex.net (test.rebex.net:22 demo/password /pub/example) is the confirmed public SFTP that this sandbox CAN reach — useful for future pull-pipeline tests. If you need to test a successful HTML pull, upload an index.html to a controlled server first; do NOT use Hostinger (unreachable from sandbox).",
+  "rca of the issue": "PRIMARY BUG: `@api.post('/sites/{slug}/publish')` decorator was dropped during the edit that inserted POST /api/sites/add. add_site's `return ...` line was immediately followed by `async def publish(...)` with no blank line and no decorator, so the publish route never registered — GET/POST /api/sites/{slug}/publish returned 404. This was missed by iteration_4 tests because test_new_features.py::test_list_backups fires POST /publish but does NOT assert the response (only asserts backups list, which already had prior entries). Fix: prepended the missing decorator line (single-line addition). Prevention: add a route-registration smoke test that asserts each documented path returns non-404 for authenticated request."
+}
