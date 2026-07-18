@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 7: verified the editor power-up (link edit + structural ops duplicate/add-image/add-button/delete) end-to-end. Added /app/backend/tests/test_editor_ops.py (13 tests, all pass). Full backend suite = 68/68 passing (was 55/55). Frontend Playwright verified: toolbar injected inside iframe (#ed-tb), correct buttons per element type (img: Replace/+ Add another/Duplicate/+ Button/Delete; link: Link/Duplicate/+ Button/Delete), '+ Add another' added an <img> (8→9), 'Link' opened window.prompt in the parent and persisted href='/newlink' via PUT /link, 'Delete' opened window.confirm and removed the element (52→51 data-eid). Both wifetobe and demo-couk re-ingested after tests → original content restored.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "test_report_links": [
+    "/app/backend/tests/test_editor_ops.py",
+    "/app/test_reports/pytest/pytest_iter7.xml",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/test_domain_lock.py",
+    "/app/backend/tests/test_add_site_multi.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "assign_regions() correctly clears+reassigns data-eid on every mutation → eids stay dense (t0..tN, iN..iM) with no gaps or collisions after ops. Good shared indexer.",
+    "page_op() bakes current region values into the DOM BEFORE cloning/mutating so 'duplicate' and 'add-image' carry live edited content (not the ingest source) — correct.",
+    "render_page() strips data-eid on publish (for_editor=False), and _publish_html assertion in test_11 confirms zero data-eid in the dist HTML. Editor iframe preserves them (for_editor=True). Clean separation.",
+    "add-button implementation copies the class list from any existing .btn* element on the page, matching the site's button style — reasonable heuristic. Fallback class='btn' when no ref exists.",
+    "Link update endpoint blindly sets link=True on any region — if the eid points to a non-anchor text region, this could produce a href field with no meaning. Consider validating region.type=='text' and el.name in ('a','button') before allowing. Minor.",
+    "scope_ok(u, site) treats role=='admin' (legacy) as full access; the seeded superadmin passes via 'not u.get(\"site_id\")' branch. RBAC test verified editor@demo-couk gets 403 on /wifetobe/*/op and /link. Works but the naming is slightly stale ('admin' role isn't seeded anymore — only 'superadmin' and 'editor').",
+    "PageOp / LinkUpdate use Pydantic → unknown op string returns 400 (from explicit check), unknown eid returns 400 (both endpoints). Good input validation.",
+    "EDITOR_INJECT uses mousedown+preventDefault to avoid losing contenteditable focus before op fires — nice UX detail.",
+    "Editor React handler triggers iframe reload via setNonce(n+1) after every structural op, so the toolbar re-mounts against fresh data-eid indices — correct given assign_regions renumbers.",
+    "Nit: server.py is 855 lines — still under the 700-line guideline but growing. Consider splitting into routes/editor.py, routes/sites.py, routes/publish.py before it gets unwieldy."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_editor_ops.py (NEW — 13 tests covering link update, all 4 ops, RBAC scope, error cases, publish cleanliness, and text-region regression)"
+  ],
+  "success_rate": { "backend": "100% (68/68)", "frontend": "100% (all spec'd flows verified)" },
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (superadmin). Ephemeral editor test_editor_<hex>@example.com created + deleted per class for RBAC test.",
+  "seed_data_creation": "Class-scoped ephemeral editor user (auto-deleted). Both wifetobe and demo-couk re-ingested at test-99 and post-frontend cleanup so no persistent mutation.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_editor_ops.py is a single stateful class → loadscope keeps it on one xdist worker. Tests mutate demo-couk, then re-ingest at test_99_restore_sites. If you add UI tests that mutate wifetobe, always POST /api/sites/wifetobe/ingest at teardown (like the frontend cleanup block did). Toolbar buttons are plain <button> inside iframe #ed-tb — no data-testids. To trigger them from Playwright, dispatch mousedown (NOT click — the handler uses mousedown+preventDefault). Native window.prompt/confirm are handled via page.on('dialog') → d.accept('/newlink') for prompt, d.accept() for confirm.",
+  "rca of the issue": "N/A — no failures. Editor power-up (link edit + 4 structural ops) verified structurally and via published HTML."
+}

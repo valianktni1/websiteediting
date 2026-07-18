@@ -86,6 +86,12 @@ class NewUser(BaseModel):
 class RegionUpdate(BaseModel):
     eid: str
     value: str
+class LinkUpdate(BaseModel):
+    eid: str
+    href: str
+class PageOp(BaseModel):
+    op: str
+    eid: str
 class SeoUpdate(BaseModel):
     seo: dict
 class SftpSettings(BaseModel):
@@ -113,6 +119,37 @@ def _clean_links(s):
     s = re.sub(r'href="https?://[^"]*?/([a-z0-9-]+)\.html"', r'href="/\1/"', s)
     return s
 
+def _set_html(el, html):
+    el.clear()
+    frag = BeautifulSoup(html or "", "html.parser")
+    for c in list(frag.contents):
+        el.append(c)
+
+def assign_regions(body):
+    """Clear + reassign data-eid across the body and return a fresh regions dict.
+    Shared by ingest and structural edits so eids/regions stay consistent."""
+    for el in body.find_all(attrs={"data-eid": True}):
+        del el["data-eid"]
+    regions = {}
+    n = 0
+    for el in body.find_all(list(EDIT_TAGS)):
+        if el.find(list(EDIT_TAGS)):
+            continue
+        if not el.get_text(strip=True):
+            continue
+        eid = f"t{n}"; n += 1
+        el["data-eid"] = eid
+        reg = {"type": "text", "value": el.decode_contents()}
+        if el.name in ("a", "button") and el.has_attr("href"):
+            reg["href"] = el.get("href", "")
+            reg["link"] = True
+        regions[eid] = reg
+    for img in body.find_all("img"):
+        eid = f"i{n}"; n += 1
+        img["data-eid"] = eid
+        regions[eid] = {"type": "image", "value": img.get("src", "")}
+    return regions
+
 def ingest_page(html, slug):
     soup = BeautifulSoup(html, "lxml")
     # SEO
@@ -130,20 +167,8 @@ def ingest_page(html, slug):
         jsonld = [str(s) for s in soup.head.find_all("script", type="application/ld+json")]
     # body only for template
     body = soup.body
-    regions = {}
-    n = 0
-    for el in body.find_all(list(EDIT_TAGS)):
-        if el.find(list(EDIT_TAGS)):  # not a leaf text element
-            continue
-        txt = el.get_text(strip=True)
-        if not txt: continue
-        eid = f"t{n}"; n += 1
-        el["data-eid"] = eid
-        regions[eid] = {"type":"text","value":el.decode_contents()}
-    for img in body.find_all("img"):
-        eid = f"i{n}"; n += 1
-        img["data-eid"] = eid
-        regions[eid] = {"type":"image","value":img.get("src","")}
+    regions = assign_regions(body)
+    n = len(regions)
     template = str(body)
     # capture stylesheet/style/font/favicon links so the design renders exactly
     head_assets = []
@@ -189,8 +214,9 @@ def render_page(page, for_editor=False, asset_base=""):
         el = bodyel.find(attrs={"data-eid":eid})
         if not el: continue
         if r["type"]=="text":
-            el.clear()
-            el.append(BeautifulSoup(r["value"], "lxml"))
+            _set_html(el, r["value"])
+            if r.get("href") is not None and el.name in ("a","button"):
+                el["href"] = r["href"]
         elif r["type"]=="image":
             el["src"] = r["value"]
         if not for_editor and el.has_attr("data-eid"):
@@ -210,27 +236,68 @@ def render_page(page, for_editor=False, asset_base=""):
 
 EDITOR_INJECT = """
 <style>
-[data-eid]{outline:1px dashed rgba(167,140,70,.0);transition:outline .12s;cursor:text}
+[data-eid]{outline:1px dashed rgba(167,140,70,0);transition:outline .12s;cursor:pointer}
 [data-eid]:hover{outline:2px dashed #A78C46;outline-offset:2px}
-img[data-eid]{cursor:pointer}
-[data-eid].editing{outline:2px solid #A78C46;background:rgba(167,140,70,.06)}
+[data-eid].ed-sel{outline:2px solid #A78C46;outline-offset:2px}
+[data-eid][contenteditable="true"]{cursor:text}
+#ed-tb{position:absolute;z-index:2147483000;display:none;gap:4px;background:#12151b;border:1px solid #A78C46;border-radius:8px;padding:5px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-family:Arial,sans-serif}
+#ed-tb button{background:#232833;color:#e9ecf1;border:1px solid #3a4150;border-radius:5px;padding:5px 9px;font-size:12px;line-height:1;cursor:pointer;white-space:nowrap}
+#ed-tb button:hover{background:#A78C46;color:#161616;border-color:#A78C46}
 </style>
 <script>
 document.addEventListener('DOMContentLoaded',function(){
+  var tb=document.createElement('div'); tb.id='ed-tb'; document.body.appendChild(tb);
+  var sel=null;
+  function post(m){parent.postMessage(m,'*');}
+  function place(el){
+    var r=el.getBoundingClientRect();
+    var top=r.top+window.scrollY-tb.offsetHeight-8;
+    if(top<window.scrollY+4) top=r.bottom+window.scrollY+8;
+    tb.style.top=top+'px';
+    tb.style.left=(r.left+window.scrollX)+'px';
+  }
+  function mk(label,fn){
+    var b=document.createElement('button'); b.textContent=label;
+    b.addEventListener('mousedown',function(e){e.preventDefault();e.stopPropagation();fn();});
+    return b;
+  }
+  function select(el){
+    if(sel && sel!==el) sel.classList.remove('ed-sel');
+    sel=el; el.classList.add('ed-sel');
+    var eid=el.getAttribute('data-eid');
+    var isImg=el.tagName==='IMG';
+    var isLink=el.tagName==='A'||el.tagName==='BUTTON';
+    tb.innerHTML='';
+    if(isImg){
+      tb.appendChild(mk('Replace',function(){post({t:'image',eid:eid});}));
+      tb.appendChild(mk('+ Add another',function(){post({t:'op',op:'add-image',eid:eid});}));
+    }
+    if(isLink){
+      tb.appendChild(mk('Link',function(){post({t:'link',eid:eid,href:el.getAttribute('href')||''});}));
+    }
+    tb.appendChild(mk('Duplicate',function(){post({t:'op',op:'duplicate',eid:eid});}));
+    tb.appendChild(mk('+ Button',function(){post({t:'op',op:'add-button',eid:eid});}));
+    tb.appendChild(mk('Delete',function(){post({t:'op',op:'delete',eid:eid});}));
+    tb.style.display='flex';
+    place(el);
+  }
   document.querySelectorAll('[data-eid]').forEach(function(el){
     var eid=el.getAttribute('data-eid');
     if(el.tagName==='IMG'){
-      el.addEventListener('click',function(e){e.preventDefault();parent.postMessage({t:'image',eid:eid},'*');});
+      el.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();select(el);});
     } else {
-      el.addEventListener('click',function(e){
-        if(el.tagName==='A') e.preventDefault();
-      });
       el.setAttribute('contenteditable','true');
-      el.addEventListener('focus',function(){el.classList.add('editing');});
-      el.addEventListener('blur',function(){el.classList.remove('editing');parent.postMessage({t:'text',eid:eid,value:el.innerHTML},'*');});
+      el.addEventListener('focus',function(){select(el);});
+      el.addEventListener('click',function(e){ if(el.tagName==='A'||el.tagName==='BUTTON'){e.preventDefault();} select(el); });
+      el.addEventListener('blur',function(){ post({t:'text',eid:eid,value:el.innerHTML}); });
     }
   });
-  document.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(e){e.preventDefault();});});
+  document.addEventListener('scroll',function(){ if(sel && tb.style.display!=='none') place(sel); },true);
+  document.body.addEventListener('click',function(e){
+    if(!e.target.closest('[data-eid]') && !e.target.closest('#ed-tb')){
+      tb.style.display='none'; if(sel){sel.classList.remove('ed-sel'); sel=null;}
+    }
+  });
 });
 </script>
 """
@@ -315,6 +382,52 @@ async def update_region(slug_site: str, slug: str, body: RegionUpdate, u=Depends
     if not p: raise HTTPException(404,"Page not found")
     if body.eid not in p.get("regions",{}): raise HTTPException(400,"Unknown region")
     await db.pages.update_one({"_id":p["_id"]},{"$set":{f"regions.{body.eid}.value":body.value}})
+    return {"ok":True}
+
+@api.put("/pages/{slug_site}/{slug}/link")
+async def update_link(slug_site: str, slug: str, body: LinkUpdate, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
+    p = await db.pages.find_one({"site":slug_site,"slug":slug})
+    if not p: raise HTTPException(404,"Page not found")
+    if body.eid not in p.get("regions",{}): raise HTTPException(400,"Unknown region")
+    await db.pages.update_one({"_id":p["_id"]},{"$set":{f"regions.{body.eid}.href":body.href,f"regions.{body.eid}.link":True}})
+    return {"ok":True}
+
+@api.post("/pages/{slug_site}/{slug}/op")
+async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
+    p = await db.pages.find_one({"site":slug_site,"slug":slug})
+    if not p: raise HTTPException(404,"Page not found")
+    if body.op not in ("duplicate","delete","add-image","add-button"):
+        raise HTTPException(400,"Unknown operation")
+    soup = BeautifulSoup(p["template"], "lxml")
+    bodyel = soup.body or soup
+    # bake current region values into the template so clones carry live content
+    for eid, r in p.get("regions",{}).items():
+        el = bodyel.find(attrs={"data-eid":eid})
+        if not el: continue
+        if r["type"]=="text":
+            _set_html(el, r["value"])
+            if r.get("href") is not None and el.name in ("a","button"):
+                el["href"] = r["href"]
+        elif r["type"]=="image":
+            el["src"] = r["value"]
+    target = bodyel.find(attrs={"data-eid":body.eid})
+    if not target: raise HTTPException(400,"Element not found")
+    if body.op in ("duplicate","add-image"):
+        import copy as _c
+        target.insert_after(_c.copy(target))
+    elif body.op=="delete":
+        target.decompose()
+    elif body.op=="add-button":
+        ref = bodyel.find(lambda t: t.name in ("a","button") and t.get("class") and any("btn" in c.lower() for c in t.get("class")))
+        new = soup.new_tag("a", href="#")
+        if ref and ref.get("class"): new["class"] = ref.get("class")
+        else: new["class"] = ["btn"]
+        new.string = "New button"
+        target.insert_after(new)
+    regions = assign_regions(bodyel)
+    await db.pages.update_one({"_id":p["_id"]},{"$set":{"template":str(bodyel),"regions":regions}})
     return {"ok":True}
 
 @api.put("/pages/{slug_site}/{slug}/seo")

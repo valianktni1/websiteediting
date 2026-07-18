@@ -553,6 +553,20 @@ function Editor({ site, page, onBack, flash }) {
     } else if (d.t === "image") {
       pendingEid.current = d.eid;
       fileRef.current?.click();
+    } else if (d.t === "link") {
+      const url = window.prompt("Link URL (where this button/link goes):", d.href || "");
+      if (url !== null) {
+        await axios.put(`${API}/pages/${site}/${page}/link`, { eid: d.eid, href: url });
+        setDirty(true); flash("Link updated"); setNonce(n => n + 1);
+      }
+    } else if (d.t === "op") {
+      if (d.op === "delete" && !window.confirm("Delete this element? It will be removed on the next publish (a backup is always kept).")) return;
+      try {
+        await axios.post(`${API}/pages/${site}/${page}/op`, { op: d.op, eid: d.eid });
+        setDirty(true);
+        flash(d.op === "delete" ? "Deleted" : d.op === "add-button" ? "Button added" : d.op === "add-image" ? "Image added — click it to replace" : "Duplicated");
+        setNonce(n => n + 1); // reload iframe to reflect structural change
+      } catch (e) { flash("Could not apply change"); }
     }
   }, [site, page, flash]);
 
@@ -608,9 +622,11 @@ function Editor({ site, page, onBack, flash }) {
           <div className="tips">
             <h4>How to edit</h4>
             <ul>
-              <li>Click any <b>text</b> on the page and type.</li>
-              <li>Click any <b>image</b> to replace it.</li>
-              <li>Changes save automatically.</li>
+              <li>Click any <b>text</b> and type to change it.</li>
+              <li>Click an element to get a <b>toolbar</b> with actions.</li>
+              <li><b>Images</b>: Replace, or "+ Add another" to grow a gallery.</li>
+              <li><b>Links / buttons</b>: "Link" to change where they go.</li>
+              <li><b>Duplicate</b>, <b>Delete</b>, or <b>+ Button</b> anything.</li>
               <li>Hit <b>Publish</b> on the dashboard to go live.</li>
             </ul>
           </div>
