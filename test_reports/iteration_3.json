@@ -1,0 +1,31 @@
+{
+  "summary": "Regression test after trimming backend/requirements.txt to 12 packages. Re-ran existing pytest suites (backend_test.py + test_new_features.py = 30 tests) and additionally verified the SFTP /test endpoint. Result: 29/30 pass. All runtime imports work (fastapi, motor, pymongo, bs4+lxml, paramiko, python-multipart, bcrypt, pyjwt). No ImportError anywhere. The single failing test is a pre-existing incorrect assertion, NOT a regression from the dependency trim.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/sites/{slug}/sftp", "issue": "Test 'test_set_and_get_sftp_persists' expects has_password=false after PUT with blank password, but server intentionally preserves existing password when blank is sent (server.py L374-376). Test assertion is outdated — server behavior is correct/desired UX. Fix the test, not the server."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/pytest_iter3.xml"
+  ],
+  "action_items": [
+    "(Optional, non-blocking) Update test_new_features.py::test_set_and_get_sftp_persists — the server correctly preserves existing password on blank submit; the assertion `has_password is False` after blank PUT is incorrect. Either remove that block or assert `has_password is True` (documents intended UX)."
+  ],
+  "critical_code_review_comments": [
+    "requirements.txt trim is clean and minimal — matches server.py imports exactly (fastapi, uvicorn, dotenv, pymongo/motor, pydantic, jwt, bcrypt, multipart, bs4, lxml, paramiko). No dead imports.",
+    "SFTP /test endpoint correctly uses socket.create_connection with timeout before paramiko handshake — verified: unreachable host returns cleanly in ~15s (not hanging). Blank config short-circuits in <100ms.",
+    "server.py handles blank-password PUT gracefully (preserves existing). Good UX. Just needs the test updated to match."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "96.7% (29/30)", "frontend": "not tested (per request)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 — verified working, login 200 with httpOnly cookie.",
+  "seed_data_creation": "None — used seeded wifetobe site and admin.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Dependency trim regression is CLEAN. All 12 packages sufficient. SFTP /test verified fast + safe (15s socket timeout, no hang). Only outstanding item is a stale test assertion in test_new_features.py L110 — cosmetic, unrelated to the fix under review. Publish returns published=false with 'SFTP not configured' — expected in sandbox (no Hostinger creds).",
+  "rca of the issue": "Test expects blank password PUT to clear the stored password. Server (server.py:374-376) intentionally treats blank password as 'keep existing' — a deliberate UX choice so admins don't have to re-enter the password every edit. The test contradicts server intent. Recommend updating the test to assert the preservation behavior."
+}
