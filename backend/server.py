@@ -140,6 +140,9 @@ class PageOp(BaseModel):
     ref: str | None = None
 class AltSuggest(BaseModel):
     eid: str
+class CaptionUpdate(BaseModel):
+    eid: str
+    caption: str
 class SeoUpdate(BaseModel):
     seo: dict
 class SftpSettings(BaseModel):
@@ -333,6 +336,12 @@ def render_page(page, for_editor=False, asset_base=""):
                 el["href"] = r["href"]
         elif r["type"]=="image":
             _apply_image(el, r["value"], r.get("alt"))
+            cap = (el.get("data-caption") or "").strip()
+            if cap:
+                fc = soup.new_tag("figcaption"); fc["class"] = "ivd-caption"; fc.string = cap
+                el.insert_after(fc)
+            if not for_editor and el.has_attr("data-caption"):
+                del el["data-caption"]
         if not for_editor and el.has_attr("data-eid"):
             del el["data-eid"]
     inner = bodyel.decode_contents()
@@ -341,6 +350,7 @@ def render_page(page, for_editor=False, asset_base=""):
     if seo.get("canonical"): head += f'\n<link rel="canonical" href="{seo["canonical"]}">'
     head += "\n" + "\n".join(seo.get("jsonld",[]))
     head += "\n" + "\n".join(page.get("head_assets",[]))
+    head += '\n<style>.ivd-caption{display:block;text-align:center;font-size:.85rem;color:#666;margin:.4rem auto 1rem;font-style:italic;max-width:90%;}</style>'
     base = f'<base href="{asset_base}">' if asset_base else ""
     editor_assets = EDITOR_INJECT if for_editor else ""
     return f"""<!DOCTYPE html><html lang="en-GB"><head><meta charset="utf-8">
@@ -390,6 +400,7 @@ document.addEventListener('DOMContentLoaded',function(){
       tb.appendChild(mk('Replace',function(){post({t:'image',eid:eid,ar:_ar(el)});}));
       tb.appendChild(mk('+ Add photos',function(){post({t:'bulk-image',eid:eid,ar:_ar(el)});}));
       tb.appendChild(mk('Alt text',function(){post({t:'alt',eid:eid,alt:el.getAttribute('alt')||''});}));
+      tb.appendChild(mk('Caption',function(){post({t:'caption',eid:eid,caption:el.getAttribute('data-caption')||''});}));
     }
     if(isLink){
       tb.appendChild(mk('Link',function(){post({t:'link',eid:eid,href:el.getAttribute('href')||''});}));
@@ -558,6 +569,70 @@ async def suggest_alt(slug_site: str, slug: str, body: AltSuggest, u=Depends(cur
     except Exception as e:
         logging.getLogger("uvicorn.error").warning(f"[suggest-alt] {slug_site}/{slug} {body.eid}: {e}")
         return {"ok":False,"message":f"Couldn't suggest alt text: {e}"}
+
+@api.put("/pages/{slug_site}/{slug}/caption")
+async def update_caption(slug_site: str, slug: str, body: CaptionUpdate, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
+    p = await db.pages.find_one({"site":slug_site,"slug":slug})
+    if not p: raise HTTPException(404,"Page not found")
+    r = p.get("regions",{}).get(body.eid)
+    if not r or r.get("type") != "image": raise HTTPException(400,"That element isn't an image")
+    soup = BeautifulSoup(p["template"], "lxml")
+    bodyel = soup.body or soup
+    el = bodyel.find(attrs={"data-eid":body.eid})
+    if not el or el.name != "img": raise HTTPException(400,"That element isn't an image")
+    await maybe_auto_snapshot(slug_site)
+    await push_undo(slug_site, slug)
+    cap = body.caption.strip()
+    if cap: el["data-caption"] = cap
+    elif el.has_attr("data-caption"): del el["data-caption"]
+    await db.pages.update_one({"_id":p["_id"]},{"$set":{"template":str(bodyel)}})
+    return {"ok":True,"caption":cap}
+
+@api.post("/pages/{slug_site}/{slug}/fill-alt")
+async def fill_alt(slug_site: str, slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
+    if not EMERGENT_LLM_KEY:
+        return {"ok":False,"message":"AI suggestions aren't set up on this server yet."}
+    p = await db.pages.find_one({"site":slug_site,"slug":slug})
+    if not p: raise HTTPException(404,"Page not found")
+    targets = [eid for eid, r in p.get("regions",{}).items()
+               if r.get("type") == "image" and not (r.get("alt") or "").strip()]
+    if not targets:
+        return {"ok":True,"job_id":None,"total":0,"message":"Every image already has a description. 🎉"}
+    await maybe_auto_snapshot(slug_site)
+    await push_undo(slug_site, slug)
+    job_id = uuid.uuid4().hex
+    await db.alt_jobs.insert_one({"_id":job_id,"site":slug_site,"slug":slug,"state":"running",
+        "done":0,"filled":0,"total":len(targets),"created":datetime.now(timezone.utc)})
+    task = asyncio.create_task(_run_fill_alt(job_id, slug_site, slug, targets))
+    _bg_tasks.add(task); task.add_done_callback(_bg_tasks.discard)
+    return {"ok":True,"job_id":job_id,"total":len(targets)}
+
+async def _run_fill_alt(job_id, site, slug, targets):
+    log = logging.getLogger("uvicorn.error")
+    done = filled = 0
+    for eid in targets:
+        p = await db.pages.find_one({"site":site,"slug":slug})
+        r = (p or {}).get("regions",{}).get(eid)
+        if r and r.get("type") == "image":
+            try:
+                img, mime = await asyncio.to_thread(_load_image_bytes, site, r.get("value",""))
+                alt = await asyncio.to_thread(_suggest_alt_gemini, img, mime)
+                if alt:
+                    await db.pages.update_one({"site":site,"slug":slug},{"$set":{f"regions.{eid}.alt":alt}})
+                    filled += 1
+            except Exception as e:
+                log.warning(f"[fill-alt] {site}/{slug} {eid}: {e}")
+        done += 1
+        await db.alt_jobs.update_one({"_id":job_id},{"$set":{"done":done,"filled":filled}})
+    await db.alt_jobs.update_one({"_id":job_id},{"$set":{"state":"done","filled":filled}})
+
+@api.get("/pages/{slug_site}/{slug}/fill-alt-status/{job_id}")
+async def fill_alt_status(slug_site: str, slug: str, job_id: str, u=Depends(current_user)):
+    j = await db.alt_jobs.find_one({"_id":job_id})
+    if not j: raise HTTPException(404,"Job not found")
+    return {"state":j.get("state"),"done":j.get("done",0),"total":j.get("total",0),"filled":j.get("filled",0)}
 
 @api.post("/pages/{slug_site}/{slug}/op")
 async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_user)):
@@ -1164,6 +1239,10 @@ async def startup():
     await db.users.create_index("email", unique=True)
     try:
         await db.add_jobs.create_index("created", expireAfterSeconds=86400)
+    except Exception:
+        pass
+    try:
+        await db.alt_jobs.create_index("created", expireAfterSeconds=86400)
     except Exception:
         pass
     admin_email = os.environ.get("SUPERADMIN_EMAIL", os.environ.get("ADMIN_EMAIL", "admin@example.com")).lower()

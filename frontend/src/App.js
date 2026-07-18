@@ -733,6 +733,7 @@ function Editor({ site, page, onBack, flash }) {
   const [showPublish, setShowPublish] = useState(false);
   const [cropState, setCropState] = useState(null);
   const [altEdit, setAltEdit] = useState(null);
+  const [fillingAlt, setFillingAlt] = useState(false);
 
   useEffect(() => {
     axios.get(`${API}/pages/${site}/${page}`).then(r => setSeo(r.data.seo));
@@ -749,6 +750,28 @@ function Editor({ site, page, onBack, flash }) {
     } catch (e) { flash("Undo failed"); }
   };
 
+  const fillAllAlt = async () => {
+    setFillingAlt(true); flash("Scanning images…");
+    try {
+      const { data } = await axios.post(`${API}/pages/${site}/${page}/fill-alt`);
+      if (!data.job_id) { flash(data.message || "Nothing to fill"); setFillingAlt(false); return; }
+      let ticks = 0;
+      const poll = setInterval(async () => {
+        ticks += 1;
+        if (ticks > 120) { clearInterval(poll); setFillingAlt(false); flash("Timed out — some images may still be processing."); return; }
+        try {
+          const { data: s } = await axios.get(`${API}/pages/${site}/${page}/fill-alt-status/${data.job_id}`);
+          flash(`Writing alt text… ${s.done}/${s.total}`);
+          if (s.state === "done") {
+            clearInterval(poll); setFillingAlt(false);
+            flash(`Added AI descriptions to ${s.filled} image${s.filled === 1 ? "" : "s"}`);
+            setDirty(true); setCanUndo(true); setNonce(n => n + 1);
+          }
+        } catch (e) { /* keep polling */ }
+      }, 2000);
+    } catch (e) { flash("Could not start"); setFillingAlt(false); }
+  };
+
   const onMessage = useCallback(async (ev) => {
     const d = ev.data || {};
     if (d.t === "text") {
@@ -762,6 +785,12 @@ function Editor({ site, page, onBack, flash }) {
       bulkFileRef.current?.click();
     } else if (d.t === "alt") {
       setAltEdit({ eid: d.eid, alt: d.alt || "" });
+    } else if (d.t === "caption") {
+      const cap = window.prompt("Caption shown under this photo (leave blank to show no caption):", d.caption || "");
+      if (cap !== null) {
+        await axios.put(`${API}/pages/${site}/${page}/caption`, { eid: d.eid, caption: cap });
+        setDirty(true); setCanUndo(true); flash(cap.trim() ? "Caption saved" : "Caption removed"); setNonce(n => n + 1);
+      }
     } else if (d.t === "link") {
       const url = window.prompt("Link URL (where this button/link goes):", d.href || "");
       if (url !== null) {
@@ -855,6 +884,10 @@ function Editor({ site, page, onBack, flash }) {
               <label>Meta tags ({(seo.metas || []).length}) & schema preserved</label>
               <div className="hint">Meta description, Open Graph, Twitter cards and JSON-LD are kept exactly and shipped on publish.</div>
               <button className="btn" onClick={saveSeo} data-testid="save-seo">Save SEO</button>
+              <button className="btn" style={{ marginTop: 10 }} data-testid="fill-alt-btn" disabled={fillingAlt} onClick={fillAllAlt}>
+                {fillingAlt ? "✨ Filling…" : "✨ Fill missing alt text"}
+              </button>
+              <div className="hint" style={{ marginTop: 6 }}>Let AI write alt text for every image on this page that doesn't have one yet.</div>
             </>
           )}
           <div className="tips">
@@ -862,7 +895,7 @@ function Editor({ site, page, onBack, flash }) {
             <ul>
               <li>Click any <b>text</b> and type to change it.</li>
               <li>Click an element to get a <b>toolbar</b> with actions.</li>
-              <li><b>Images</b>: Replace (crop &amp; zoom to fit), "+ Add photos" for a gallery, or "Alt text" (✨ AI can suggest one).</li>
+              <li><b>Images</b>: Replace (crop &amp; zoom to fit), "+ Add photos" for a gallery, "Alt text" (✨ AI), or "Caption" for a line under the photo.</li>
               <li><b>Reorder photos</b>: drag one photo onto another to swap them, or use ↑/↓.</li>
               <li><b>Links / buttons</b>: "Link" to change where they go.</li>
               <li><b>Duplicate</b>, <b>Delete</b>, or <b>+ Button</b> anything.</li>

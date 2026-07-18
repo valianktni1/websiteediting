@@ -276,3 +276,18 @@ Verified 100% for the 3 new features + regressions in iteration_11.json (backend
    ↑/↓ buttons remain as fallback. Backend: PageOp gained optional `ref`; swap-image handled early in page_op.
 - MINOR (non-blocking, flagged twice by tester, not fixed): hero <h1 contenteditable> overlays the hero
   <img>, so a click near the very top can select the heading instead of the image. Gallery images unaffected.
+
+## 2026-07-19 (fork) — Alt-Everywhere (bulk AI alt) + optional gallery captions
+Both backend-verified end-to-end via curl (job lifecycle, caption render/leak/blank cases).
+1. Fill missing alt text — SEO panel button (data-testid fill-alt-btn). POST /api/pages/{site}/{slug}/fill-alt
+   finds image regions with empty alt and runs a BACKGROUND JOB (alt_jobs coll, 24h TTL, tracked in
+   _bg_tasks) that AI-fills each via Gemini 2.5 Flash; frontend polls GET .../fill-alt-status/{job_id}
+   every 2s and shows "Writing alt text… X/Y". Background job avoids the reverse-proxy timeout that a
+   long synchronous multi-image request would hit. One push_undo + snapshot taken at job start.
+2. Gallery captions — toolbar 'Caption' button → window.prompt. Stored as `data-caption` ON THE IMG in the
+   template (PUT /api/pages/{site}/{slug}/caption {eid,caption}) so it survives structural ops (clones carry
+   it, assign_regions leaves it intact). render_page inserts a <figcaption class="ivd-caption"> after the img
+   ONLY when caption is non-empty (blank = image only, verified 0 figcaptions). data-caption is stripped on
+   publish (never leaks). A tiny .ivd-caption style is injected into <head> so captions look right on the live
+   site. Editor keeps data-caption so the toolbar prefills the current value.
+- No new backend deps. react-easy-crop remains the only added npm package.
