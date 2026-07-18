@@ -289,10 +289,19 @@ function SitesTab({ flash, onSitesChanged }) {
   const [f, setF] = useState({ slug: "", name: "", domain: "", host: "", port: 65002, username: "", password: "", remote_path: "" });
   const [adding, setAdding] = useState(false);
   const [addMsg, setAddMsg] = useState("");
-  const addSite = async () => {
-    setAdding(true); setAddMsg("");
+  const [testing, setTesting] = useState(false);
+  const testAdd = async () => {
+    setTesting(true); setAddMsg("");
     try {
-      const { data } = await axios.post(`${API}/sites/add`, f);
+      const { data } = await axios.post(`${API}/sftp/test`, f, { timeout: 60000 });
+      setAddMsg((data.ok ? "✓ " : "✗ ") + data.message);
+    } catch (e) { setAddMsg("✗ " + (e.response?.data?.detail || e.message || "Test failed")); }
+    finally { setTesting(false); }
+  };
+  const addSite = async () => {
+    setAdding(true); setAddMsg("Connecting and pulling files… this can take up to a minute.");
+    try {
+      const { data } = await axios.post(`${API}/sites/add`, f, { timeout: 180000 });
       if (data.ok) {
         setAddMsg(`✓ Pulled ${data.pulled} files and ingested ${data.ingested} pages as "${data.slug}".`);
         setF({ slug: "", name: "", domain: "", host: "", port: 65002, username: "", password: "", remote_path: "" });
@@ -300,9 +309,10 @@ function SitesTab({ flash, onSitesChanged }) {
       } else {
         setAddMsg("✗ " + data.message);
       }
-    } catch (e) { setAddMsg("✗ " + (e.response?.data?.detail || "Could not add site")); }
+    } catch (e) { setAddMsg("✗ " + (e.response?.data?.detail || e.message || "Could not add site")); }
     finally { setAdding(false); }
   };
+  const missing = [!f.slug && "Short ID", !f.host && "Host", !f.username && "Username", !f.password && "Password"].filter(Boolean);
 
   return (
     <div>
@@ -326,10 +336,16 @@ function SitesTab({ flash, onSitesChanged }) {
           <input data-testid="as-pass" type="password" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} />
           <label>Remote path (this site's own folder)</label>
           <input data-testid="as-path" value={f.remote_path} placeholder="/home/USER/domains/wifetobe.co.uk/public_html" onChange={e => setF({ ...f, remote_path: e.target.value })} />
-          {addMsg && <div className={`test-msg ${addMsg.startsWith("✓") ? "ok" : "bad"}`} data-testid="as-result">{addMsg}</div>}
-          <button className="btn primary" data-testid="as-submit" disabled={adding || !f.slug || !f.host || !f.username || !f.password} onClick={addSite}>
-            {adding ? "Pulling & ingesting… (may take a minute)" : "Add site & pull from server"}
-          </button>
+          {addMsg && <div className={`test-msg ${addMsg.startsWith("✓") ? "ok" : addMsg.startsWith("✗") ? "bad" : ""}`} data-testid="as-result">{addMsg}</div>}
+          <div className="sftp-btns">
+            <button className="btn" data-testid="as-test" disabled={testing || adding || missing.length > 0} onClick={testAdd}>
+              {testing ? "Testing…" : "Test connection"}
+            </button>
+            <button className="btn primary" data-testid="as-submit" disabled={adding || testing || missing.length > 0} onClick={addSite}>
+              {adding ? "Pulling & ingesting…" : "Add site & pull from server"}
+            </button>
+          </div>
+          {missing.length > 0 && <div className="hint" style={{ marginTop: 8 }}>Fill in: <b>{missing.join(", ")}</b> to enable the buttons.</div>}
         </div>
       )}
       <h4 style={{ marginBottom: 10 }}>Sites on this app</h4>

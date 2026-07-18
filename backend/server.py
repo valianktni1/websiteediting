@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-import os, io, re, json, shutil, zipfile, glob, socket, asyncio
+import os, io, re, json, shutil, zipfile, glob, socket, asyncio, logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -406,6 +406,13 @@ async def test_sftp(slug: str, body: SftpSettings, u=Depends(require_admin)):
         return {"ok":False,"message":"Enter host, username and password first (save the password once, then you can test)."}
     return await asyncio.to_thread(_do_test, conf)
 
+@api.post("/sftp/test")
+async def test_sftp_new(body: SftpSettings, u=Depends(require_super)):
+    conf = body.model_dump()
+    if not conf.get("host") or not conf.get("username") or not conf.get("password"):
+        return {"ok":False,"message":"Enter host, username and password first."}
+    return await asyncio.to_thread(_do_test, conf)
+
 def _sftp_connect(conf, timeout=15):
     import paramiko
     sock = socket.create_connection((conf["host"], int(conf.get("port", 22))), timeout=timeout)
@@ -518,6 +525,7 @@ def _sftp_pull(sftp_conf, local_root):
 
 @api.post("/sites/add")
 async def add_site(body: AddSite, u=Depends(require_super)):
+    log = logging.getLogger("uvicorn.error")
     slug = re.sub(r'[^a-z0-9-]', '-', body.slug.lower()).strip('-')
     if not slug: raise HTTPException(400, "Enter a valid site name (letters, numbers, hyphens).")
     if await db.sites.find_one({"slug": slug}):
@@ -526,23 +534,29 @@ async def add_site(body: AddSite, u=Depends(require_super)):
         raise HTTPException(400, "Enter the SFTP host, username and password.")
     conf = {"host": body.host, "port": body.port, "username": body.username,
             "password": body.password, "remote_path": body.remote_path or "public_html"}
+    log.info(f"[add_site] pulling '{slug}' from {conf['host']}:{conf['port']} path={conf['remote_path']}")
     local = os.path.join(SITES_DIR, slug)
     if os.path.exists(local): shutil.rmtree(local, ignore_errors=True)
     try:
         pulled = await asyncio.to_thread(_sftp_pull, conf, local)
     except socket.timeout:
         shutil.rmtree(local, ignore_errors=True)
+        log.warning(f"[add_site] '{slug}' timed out connecting to {conf['host']}:{conf['port']}")
         return {"ok": False, "message": "Connection timed out — check the host and port (Hostinger SFTP is usually 65002)."}
     except Exception as e:
         shutil.rmtree(local, ignore_errors=True)
+        log.warning(f"[add_site] '{slug}' pull failed: {e}")
         return {"ok": False, "message": f"Couldn't pull the site: {e}"}
+    log.info(f"[add_site] '{slug}' pulled {pulled} files, ingesting…")
     n = await ingest_site(slug)
     if n == 0:
         shutil.rmtree(local, ignore_errors=True)
         await db.sites.delete_one({"slug": slug})
+        log.warning(f"[add_site] '{slug}' no .html found in {conf['remote_path']}")
         return {"ok": False, "message": f"Pulled {pulled} file(s) but found no .html pages in {conf['remote_path']}. Point the path at the folder that holds index.html."}
     await db.sites.update_one({"slug": slug}, {"$set": {
         "name": body.name or slug, "domain": (body.domain or "").strip().lower(), "sftp": conf}})
+    log.info(f"[add_site] '{slug}' DONE — {n} pages ingested")
     return {"ok": True, "ingested": n, "pulled": pulled, "slug": slug}
 
 @api.post("/sites/{slug}/publish")
