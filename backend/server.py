@@ -84,6 +84,7 @@ class SftpSettings(BaseModel):
     username: str = ""
     password: str = ""
     remote_path: str = "public_html"
+    domain: str = ""
 
 # ---------------- ingestion ----------------
 def _clean_links(s):
@@ -371,10 +372,14 @@ async def serve_dist(slug: str, path: str):
 @api.put("/sites/{slug}/sftp")
 async def set_sftp(slug: str, body: SftpSettings, u=Depends(require_admin)):
     data = body.model_dump()
+    domain = (data.pop("domain", "") or "").strip().lower()
     if not data.get("password"):
         existing = await db.sites.find_one({"slug":slug})
         data["password"] = (existing or {}).get("sftp",{}).get("password","")
-    await db.sites.update_one({"slug":slug},{"$set":{"sftp":data}})
+    upd = {"sftp": data}
+    if domain:
+        upd["domain"] = domain
+    await db.sites.update_one({"slug":slug},{"$set":upd})
     return {"ok":True}
 
 @api.post("/sites/{slug}/sftp/test")
@@ -431,13 +436,27 @@ async def publish_target(slug: str, u=Depends(current_user)):
     sftp = s.get("sftp") or {}
     pages = await db.pages.count_documents({"site":slug})
     configured = bool(sftp.get("host"))
+    domain = (s.get("domain") or "").lower()
+    remote = sftp.get("remote_path","") or ""
+    path_ok = (not domain) or (domain in remote.lower())
     return {"configured":configured,"host":sftp.get("host",""),
-            "remote_path":sftp.get("remote_path",""),"pages":pages}
+            "remote_path":remote,"pages":pages,"domain":domain,"path_ok":path_ok}
 
-def _sftp_push(sftp_conf, local_root):
+def _domain_guard(site, remote_path):
+    """Raise if a site with a locked domain would publish to a path that doesn't contain it."""
+    domain = (site.get("domain") or "").lower()
+    if domain and domain not in (remote_path or "").lower():
+        raise HTTPException(400,
+            f"Blocked for safety: this site is locked to domain '{domain}', but the SFTP remote path "
+            f"'{remote_path}' does not contain it. Set the path to that domain's own folder "
+            f"(e.g. /home/USER/domains/{domain}/public_html) in Admin settings before publishing.")
+
+def _sftp_push(sftp_conf, local_root, expect_domain=""):
     t, sf = _sftp_connect(sftp_conf)
     try:
         remote = _resolve_remote(sf, sftp_conf)
+        if expect_domain and expect_domain.lower() not in remote.lower():
+            raise ValueError(f"Refusing to upload: resolved path '{remote}' does not contain the locked domain '{expect_domain}'.")
         def _mkdirs(rpath):
             parts = rpath.strip("/").split("/"); cur = ""
             for p in parts:
@@ -471,8 +490,9 @@ async def publish(slug: str, u=Depends(current_user)):
     if not sftp or not sftp.get("host"):
         return {"published":False,"backup":bkp,"dist":out,
                 "message":"Rendered + backed up. SFTP not configured yet — set Hostinger SFTP credentials to push live."}
+    _domain_guard(s, sftp.get("remote_path",""))
     try:
-        await asyncio.to_thread(_sftp_push, sftp, out)
+        await asyncio.to_thread(_sftp_push, sftp, out, (s.get("domain") or ""))
         await db.sites.update_one({"_id":s["_id"]},{"$set":{"last_published":ts}})
         return {"published":True,"backup":bkp,"files_pushed":True,"message":"Published live to Hostinger."}
     except Exception as e:
@@ -496,7 +516,8 @@ async def get_sftp(slug: str, u=Depends(require_admin)):
     if not s: raise HTTPException(404,"Site not found")
     sf = s.get("sftp",{}) or {}
     return {"host":sf.get("host",""),"port":sf.get("port",22),"username":sf.get("username",""),
-            "remote_path":sf.get("remote_path","public_html"),"has_password":bool(sf.get("password"))}
+            "remote_path":sf.get("remote_path","public_html"),"has_password":bool(sf.get("password")),
+            "domain":s.get("domain","")}
 
 @api.get("/available-sites")
 async def available_sites(u=Depends(require_admin)):
@@ -567,8 +588,9 @@ async def restore(slug: str, body: dict, u=Depends(require_admin)):
     if not sftp or not sftp.get("host"):
         shutil.rmtree(tmp, ignore_errors=True)
         return {"restored":False,"message":"Backup unpacked, but SFTP isn't configured — set credentials to push the rollback live."}
+    _domain_guard(s, sftp.get("remote_path",""))
     try:
-        await asyncio.to_thread(_sftp_push, sftp, tmp)
+        await asyncio.to_thread(_sftp_push, sftp, tmp, (s.get("domain") or ""))
         return {"restored":True,"message":f"Rolled back to {body.get('name')} and pushed live."}
     except Exception as e:
         return {"restored":False,"error":str(e),"message":f"Rollback push failed: {e}"}

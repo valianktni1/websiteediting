@@ -1,0 +1,31 @@
+{
+  "summary": "SAFETY-CRITICAL domain-lock feature + white-label regression. 13 new backend tests (test_domain_lock.py) + 30 pre-existing = 43/43 pass. Frontend verified: tab title, brand, footer, 14 page cards, Publish opens confirm modal (does NOT publish immediately), unconfigured-SFTP variant shows 'Render & back up', SFTP tab shows Locked domain field + all required inputs. State reset to preview-clean at end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_domain_lock.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/pytest_iter4.xml",
+    "/app/test_reports/pytest/pytest_iter4_all.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Domain guard is correctly enforced at TWO layers: (1) HTTP handler pre-check via _domain_guard (server.py L445-452, raises 400 before any SFTP attempt), (2) inside _sftp_push after path resolution (L458-459) — good defense-in-depth. Verified guard short-circuits in <1s even with a bogus host set (no 15s socket timeout).",
+    "publish-target endpoint (L432-443) case-insensitive substring match: `domain in remote.lower()`. If a site's domain is empty string, path_ok defaults to True — correct fail-open for un-locked sites.",
+    "PUT /sftp lowercases + strips the incoming domain (server.py L375) — matches the case-insensitive guard. Good.",
+    "SftpSettings.remote_path default is 'public_html' (server.py L86) — the very footgun this feature guards against. Consider adding a server-side warning log OR blocking that specific default at PUT-time when a domain is locked but path is bare 'public_html'. Currently only blocked at publish/restore time, which is fine since UI shows path_ok=false in the modal.",
+    "GET /sftp response includes has_password but not the raw password — good. Domain is returned so UI can render the 🔒 badge.",
+    "PublishConfirm (App.js L308-352) correctly gates the primary button with `disabled={busy || !t.path_ok}` when configured, and shows a distinct publish-blocked hint. When unconfigured, no gate needed — shows only 'Render & back up'. Both variants use data-testid=publish-confirm as spec'd.",
+    "Restore endpoint enforces require_admin AND _domain_guard — matches publish. Verified via test_restore_admin_only (editor gets 403) and test_restore_domain_guard_blocks (400 in <5s).",
+    "Minor: /api/sites/{slug}/sftp PUT doesn't validate domain format (accepts arbitrary strings). Low risk since it's admin-only, but adding a simple regex check would prevent typos silently disabling the guard."
+  ],
+  "updated_files": ["/app/backend/tests/test_domain_lock.py (new)"],
+  "success_rate": {"backend": "100% (43/43)", "frontend": "100% (all spec'd items verified)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 — verified working (httpOnly cookie set).",
+  "seed_data_creation": "Used seeded wifetobe site + admin. State reset at end (host='', domain='wifetobe.org', remote_path='/home/u897891218/domains/wifetobe.org/public_html'). Note has_password=true persists from prior test PUT — harmless since host is blank.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_domain_lock.py MUST run under a single class (TestDomainLockSuite) because pytest.ini forces `-n 2 --dist loadscope` which splits tests across workers at the CLASS level, and this suite mutates shared wifetobe SFTP DB state. If you add more stateful tests, add them to TestDomainLockSuite (not new classes). Guard short-circuits confirmed <1s vs 15s socket timeout. SFTP tab in Admin settings modal → Hostinger SFTP tab. State currently host='', domain='wifetobe.org', good remote_path.",
+  "rca of the issue": "n/a — feature works as designed. Only nit: initial test file split into 5 classes triggered an intermittent race under xdist loadscope (each class → different worker → concurrent PUT /sftp overwrote state mid-test). Fixed by merging into one class; also verified with -n 0 serial run. Not a product bug."
+}

@@ -221,13 +221,13 @@ function UsersTab({ flash }) {
 function SftpTab({ flash }) {
   const [sites, setSites] = useState([]);
   const [slug, setSlug] = useState("");
-  const [f, setF] = useState({ host: "", port: 22, username: "", password: "", remote_path: "public_html" });
+  const [f, setF] = useState({ host: "", port: 22, username: "", password: "", remote_path: "public_html", domain: "" });
   const [hasPw, setHasPw] = useState(false);
   useEffect(() => { axios.get(`${API}/sites`).then(r => { setSites(r.data); if (r.data[0]) setSlug(r.data[0].slug); }); }, []);
   useEffect(() => {
     if (!slug) return;
     axios.get(`${API}/sites/${slug}/sftp`).then(r => {
-      setF({ host: r.data.host, port: r.data.port, username: r.data.username, password: "", remote_path: r.data.remote_path });
+      setF({ host: r.data.host, port: r.data.port, username: r.data.username, password: "", remote_path: r.data.remote_path, domain: r.data.domain || "" });
       setHasPw(r.data.has_password);
     });
   }, [slug]);
@@ -248,6 +248,9 @@ function SftpTab({ flash }) {
       <select data-testid="sftp-site" value={slug} onChange={e => setSlug(e.target.value)}>
         {sites.map(s => <option key={s.slug} value={s.slug}>{s.name || s.slug}</option>)}
       </select>
+      <label>Locked domain 🔒</label>
+      <input data-testid="sftp-domain" value={f.domain} placeholder="wifetobe.org" onChange={e => setF({ ...f, domain: e.target.value.trim().toLowerCase() })} />
+      <div className="hint" style={{marginTop:6}}>Safety lock: the app will <b>refuse to publish</b> unless the remote path below contains this domain — so this site can never overwrite another.</div>
       <label>Host</label>
       <input data-testid="sftp-host" value={f.host} placeholder="ftp.yourdomain.com" onChange={e => setF({ ...f, host: e.target.value })} />
       <label>Port</label>
@@ -329,14 +332,18 @@ function PublishConfirm({ site, onClose, flash }) {
       {t && t.configured && (
         <>
           <p className="hint">You're about to push <b>{t.pages} page(s)</b> live to:</p>
-          <div className="target-box" data-testid="publish-target-path">
-            <div className="target-host">{t.host}</div>
+          <div className={`target-box ${t.path_ok ? "" : "blocked"}`} data-testid="publish-target-path">
+            <div className="target-host">{t.host}{t.domain ? ` · 🔒 ${t.domain}` : ""}</div>
             <div className="target-path">{t.remote_path || "(account home)"}</div>
           </div>
-          <p className="hint" style={{marginTop:12}}>⚠️ Files with the same names in that folder will be <b>overwritten</b>. Make sure this is <b>{site}</b>'s own folder (e.g. <code>.../domains/&lt;this-site&gt;/public_html</code>) — not another site's. If unsure, cancel and run <b>Test connection</b> first.</p>
+          {t.path_ok ? (
+            <p className="hint" style={{marginTop:12}}>⚠️ Files with the same names in that folder will be <b>overwritten</b>. Confirm this is <b>{site}</b>'s own folder. If unsure, cancel and run <b>Test connection</b> first.</p>
+          ) : (
+            <p className="hint bad-hint" style={{marginTop:12}} data-testid="publish-blocked">🛑 <b>Blocked:</b> the remote path does not contain this site's locked domain <b>{t.domain}</b>. Publishing is disabled to protect your other sites. Fix the path in <b>Admin → Hostinger SFTP</b> to <code>.../domains/{t.domain}/public_html</code>.</p>
+          )}
           <div className="modal-actions">
             <button className="btn ghost" data-testid="publish-cancel" onClick={onClose}>Cancel</button>
-            <button className="btn primary" data-testid="publish-confirm" disabled={busy} onClick={go}>{busy ? "Publishing…" : "Yes, publish to this folder"}</button>
+            <button className="btn primary" data-testid="publish-confirm" disabled={busy || !t.path_ok} onClick={go}>{busy ? "Publishing…" : "Yes, publish to this folder"}</button>
           </div>
         </>
       )}
