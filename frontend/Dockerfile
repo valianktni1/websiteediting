@@ -3,8 +3,10 @@ WORKDIR /app
 COPY package.json yarn.lock* ./
 RUN yarn install --frozen-lockfile || yarn install
 COPY . .
-# same-origin: frontend calls /api, nginx proxies to backend
-ENV REACT_APP_BACKEND_URL=""
+# same-origin by default: frontend calls /api, nginx proxies to backend.
+# Overridable via build arg (compose: build.args.REACT_APP_BACKEND_URL)
+ARG REACT_APP_BACKEND_URL=""
+ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
 RUN yarn build
 
 FROM nginx:alpine

@@ -563,18 +563,25 @@ async def restore(slug: str, body: dict, u=Depends(require_admin)):
         shutil.rmtree(tmp, ignore_errors=True)
 
 app.include_router(api)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
+_cors = os.environ.get("CORS_ORIGINS", "*")
+_origins = ["*"] if _cors.strip() == "*" else [o.strip() for o in _cors.split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
-    admin_email=os.environ.get("ADMIN_EMAIL","admin@example.com").lower()
-    admin_pw=os.environ.get("ADMIN_PASSWORD","admin123")
-    ex=await db.users.find_one({"email":admin_email})
+    admin_email = os.environ.get("SUPERADMIN_EMAIL", os.environ.get("ADMIN_EMAIL", "admin@example.com")).lower()
+    admin_pw = os.environ.get("SUPERADMIN_PASSWORD", os.environ.get("ADMIN_PASSWORD", "admin123"))
+    admin_name = os.environ.get("SUPERADMIN_NAME", "Super Admin")
+    ex = await db.users.find_one({"email": admin_email})
     if not ex:
-        await db.users.insert_one({"email":admin_email,"password_hash":hash_pw(admin_pw),
-            "name":"Super Admin","role":"admin","site_id":None,"created_at":datetime.now(timezone.utc).isoformat()})
-    # auto-ingest wifetobe on first boot
-    if not await db.sites.find_one({"slug":"wifetobe"}) and os.path.isdir(os.path.join(SITES_DIR,"wifetobe")):
-        await ingest_site("wifetobe")
+        await db.users.insert_one({"email": admin_email, "password_hash": hash_pw(admin_pw),
+            "name": admin_name, "role": "admin", "site_id": None, "created_at": datetime.now(timezone.utc).isoformat()})
+    # auto-ingest any site folder (with .html files) that isn't ingested yet
+    if os.path.isdir(SITES_DIR):
+        for name in sorted(os.listdir(SITES_DIR)):
+            p = os.path.join(SITES_DIR, name)
+            if os.path.isdir(p) and glob.glob(os.path.join(p, "*.html")):
+                if not await db.sites.find_one({"slug": name}):
+                    await ingest_site(name)
