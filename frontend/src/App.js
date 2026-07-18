@@ -630,11 +630,13 @@ function Dashboard() {
 function Editor({ site, page, onBack, flash }) {
   const iframeRef = useRef(null);
   const fileRef = useRef(null);
+  const bulkFileRef = useRef(null);
   const pendingEid = useRef(null);
   const [seo, setSeo] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
+  const [showPublish, setShowPublish] = useState(false);
 
   useEffect(() => {
     axios.get(`${API}/pages/${site}/${page}`).then(r => setSeo(r.data.seo));
@@ -659,6 +661,15 @@ function Editor({ site, page, onBack, flash }) {
     } else if (d.t === "image") {
       pendingEid.current = d.eid;
       fileRef.current?.click();
+    } else if (d.t === "bulk-image") {
+      pendingEid.current = d.eid;
+      bulkFileRef.current?.click();
+    } else if (d.t === "alt") {
+      const alt = window.prompt("Describe this image (alt text — helps SEO and screen readers):", d.alt || "");
+      if (alt !== null) {
+        await axios.put(`${API}/pages/${site}/${page}/alt`, { eid: d.eid, alt });
+        setDirty(true); setCanUndo(true); flash("Alt text saved"); setNonce(n => n + 1);
+      }
     } else if (d.t === "link") {
       const url = window.prompt("Link URL (where this button/link goes):", d.href || "");
       if (url !== null) {
@@ -692,6 +703,23 @@ function Editor({ site, page, onBack, flash }) {
     e.target.value = "";
   };
 
+  const onBulkFiles = async (e) => {
+    const files = Array.from(e.target.files || []); if (!files.length) return;
+    flash(`Uploading ${files.length} photo${files.length > 1 ? "s" : ""}…`);
+    try {
+      const urls = [];
+      for (const file of files) {
+        const fd = new FormData(); fd.append("file", file);
+        const { data } = await axios.post(`${API}/media/${site}/upload`, fd);
+        urls.push(data.url);
+      }
+      await axios.post(`${API}/pages/${site}/${page}/bulk-image`, { eid: pendingEid.current, urls });
+      setDirty(true); setCanUndo(true); flash(`Added ${urls.length} photo${urls.length > 1 ? "s" : ""}`);
+      setNonce(n => n + 1);
+    } catch (err) { flash("Could not add photos"); }
+    e.target.value = "";
+  };
+
   const saveSeo = async () => {
     await axios.put(`${API}/pages/${site}/${page}/seo`, { seo });
     flash("SEO saved");
@@ -705,6 +733,7 @@ function Editor({ site, page, onBack, flash }) {
         <div className="topbar-right">
           <button className="btn ghost" data-testid="editor-undo" disabled={!canUndo} onClick={undo}>↶ Undo last change</button>
           {dirty && <span className="dirty">● unsaved changes will publish on next Publish</span>}
+          <button className="btn primary" data-testid="editor-publish-btn" onClick={() => setShowPublish(true)}>Publish to Hostinger</button>
         </div>
       </header>
       <div className="editor-body">
@@ -732,7 +761,7 @@ function Editor({ site, page, onBack, flash }) {
             <ul>
               <li>Click any <b>text</b> and type to change it.</li>
               <li>Click an element to get a <b>toolbar</b> with actions.</li>
-              <li><b>Images</b>: Replace, or "+ Add another" to grow a gallery.</li>
+              <li><b>Images</b>: Replace, "+ Add photos" to drop several into a gallery at once, or "Alt text" for SEO.</li>
               <li><b>Links / buttons</b>: "Link" to change where they go.</li>
               <li><b>Duplicate</b>, <b>Delete</b>, or <b>+ Button</b> anything.</li>
               <li>Use <b>↑ Up</b> / <b>↓ Down</b> to reorder items like gallery photos.</li>
@@ -743,6 +772,8 @@ function Editor({ site, page, onBack, flash }) {
         </aside>
       </div>
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} data-testid="image-input" />
+      <input ref={bulkFileRef} type="file" accept="image/*" multiple hidden onChange={onBulkFiles} data-testid="bulk-image-input" />
+      {showPublish && <PublishConfirm site={site} flash={flash} onClose={() => setShowPublish(false)} />}
     </div>
   );
 }

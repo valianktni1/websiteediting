@@ -1,0 +1,36 @@
+{
+  "summary": "Frontend-only UI validation of Ivory Digital Editor new features (editor Publish button, Alt text, bulk image upload input, undo, reorder, client branding, session auto-restore point, remove-site guard). All 10 requested UI checks passed. No blocking issues found. Backend not tested (per request).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "login_superadmin": "PASS - dashboard shows page-home",
+    "editor_publish_btn": "PASS - data-testid=editor-publish-btn present in editor header; click opens Publish confirm modal (shows 'Publish to Hostinger', target/host domain, and hint about SFTP); Cancel closes the modal without navigation.",
+    "alt_text_flow": "PASS - clicking img inside iframe reveals toolbar with Replace/+ Add photos/Alt text/Up/Down/Duplicate/+ Button/Delete/Link. Clicking 'Alt text' triggers window.prompt with correct message 'Describe this image (alt text — helps SEO and screen readers):' and default value equal to current alt (e.g. 'Veni Infantino statement designer wedding dress with luxurio...'). Accepting a new value re-enables the Undo button, confirming the PUT succeeded. Toast text ('Alt text saved') not captured at the moment inner_text() was polled (toast likely faded); underlying network call clearly succeeded.",
+    "bulk_image_upload": "PASS - data-testid=bulk-image-input hidden file input present in parent DOM. Clicking '+ Add photos' button inside iframe toolbar successfully fires (postMessage handled by parent). Actual multi-file upload not driven (per instructions).",
+    "undo_button": "PASS - data-testid=editor-undo present, disabled initially (canUndo=false), becomes enabled after alt-text edit.",
+    "reorder_buttons": "PASS - ↑ Up / ↓ Down toolbar buttons visible after selecting an image in the iframe; click on Up executes (toast text not caught mid-flight but no errors and iframe reloaded).",
+    "client_branding": "PASS - tab-branding opens, brand-site select lists both 'wifetobe' and 'demo-couk', brand-name-input/brand-subdomain fillable, brand-logo-upload visible, brand-save posts and success toast shown.",
+    "session_auto_restore_point": "PASS - version-history-btn opens 'Restore points' modal on dashboard load; top entry is 'Session start (auto)' with AUTO-SAVED badge (e.g. 'Jul 18, 12:44 PM · just now · 14 pages').",
+    "remove_site_button": "PASS - data-testid=remove-site-wifetobe and remove-site-demo-couk both present for superadmin under Sites tab. Clicking triggers window.prompt: 'This permanently removes \"wifetobe\" from the editor — its pages, restore points and downloaded files. ⚠️ Your LIVE Hostinger site is NOT touched. Type the site ID \"wifetobe\" to confirm:'. Prompt dismissed safely, no deletion performed.",
+    "regression_editor": "PASS - iframe loads with 7 images and 61 contenteditable data-eid elements, toolbar functional, SEO panel and 'All pages' back-button work; dashboard Publish confirm still functions."
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Toast auto-dismiss timing is short enough that automated tests polling inner_text() a couple seconds after the action may miss the toast — consider raising toast persistence to ~3.5s or adding data-testid=toast so tests can await it deterministically.",
+    "The image-click detection inside the iframe was fragile because the hero <h1 contenteditable> overlaps the hero <img>. Not a bug for humans but real-user clicks near the top of the page will select the H1 instead of the background image. Consider z-index / pointer-events tweaks or a small 'select image' affordance.",
+    "Carry-over items from iteration_8: update_region and update_seo backend routes still lack scope_ok() enforcement (RBAC hole for scoped editors). Also make_snapshot uses mutable default `body: dict = {}`. These were not re-tested this session but remain unresolved."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested this iteration", "frontend": "100% (10/10 UI checks passed)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (used). editor_demo_couk@test.local / EditorPass!2026 was not exercised this iteration.",
+  "seed_data_creation": "Branding for site index 0 was updated during test to brand_name='TEST Brand', subdomain='testbrand'. Main agent may want to reset it back to production values. Alt text on one image on wifetobe home page was updated to 'TEST_ALT_2026' — a pre-alt-edit restore point should exist ('Auto-saved' entry) that can be rolled back if needed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 10 UI features from this request are confirmed. Toolbar buttons live inside the iframe frame content — use page.frame_locator('iframe').first.locator('button:has-text(\"Alt text\")') pattern. window.prompt is used for alt text and remove-site guard so a page.on('dialog', ...) handler is required. bulk-image-input lives in the PARENT doc, not the iframe. Backend not retested; the 68 tests from iteration_8 remain the source of truth.",
+  "rca of the issue": "No bugs found in the reviewed feature set. Only minor test-observability nit around toast timing and pre-existing carry-over RBAC/mutable-default items (from iteration_8) remain."
+}

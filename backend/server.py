@@ -89,6 +89,12 @@ class RegionUpdate(BaseModel):
 class LinkUpdate(BaseModel):
     eid: str
     href: str
+class AltUpdate(BaseModel):
+    eid: str
+    alt: str
+class BulkImage(BaseModel):
+    eid: str
+    urls: list[str]
 class PageOp(BaseModel):
     op: str
     eid: str
@@ -130,14 +136,16 @@ def _set_html(el, html):
     for c in list(frag.contents):
         el.append(c)
 
-def _apply_image(el, value):
+def _apply_image(el, value, alt=None):
     """Set an image src; if it was changed, drop responsive attrs (srcset/sizes/data-src)
-    that would otherwise make the browser keep showing the OLD image."""
+    that would otherwise make the browser keep showing the OLD image. Optionally set alt."""
     orig = el.get("src", "")
     el["src"] = value
     if value != orig:
         for a in ("srcset", "sizes", "data-src", "data-srcset", "data-lazy-src", "data-lazy-srcset"):
             if el.has_attr(a): del el[a]
+    if alt is not None:
+        el["alt"] = alt
 
 def assign_regions(body):
     """Clear + reassign data-eid across the body and return a fresh regions dict.
@@ -161,7 +169,7 @@ def assign_regions(body):
     for img in body.find_all("img"):
         eid = f"i{n}"; n += 1
         img["data-eid"] = eid
-        regions[eid] = {"type": "image", "value": img.get("src", "")}
+        regions[eid] = {"type": "image", "value": img.get("src", ""), "alt": img.get("alt", "")}
     return regions
 
 def ingest_page(html, slug):
@@ -282,7 +290,7 @@ def render_page(page, for_editor=False, asset_base=""):
             if r.get("href") is not None and el.name in ("a","button"):
                 el["href"] = r["href"]
         elif r["type"]=="image":
-            _apply_image(el, r["value"])
+            _apply_image(el, r["value"], r.get("alt"))
         if not for_editor and el.has_attr("data-eid"):
             del el["data-eid"]
     inner = bodyel.decode_contents()
@@ -334,7 +342,8 @@ document.addEventListener('DOMContentLoaded',function(){
     tb.innerHTML='';
     if(isImg){
       tb.appendChild(mk('Replace',function(){post({t:'image',eid:eid});}));
-      tb.appendChild(mk('+ Add another',function(){post({t:'op',op:'add-image',eid:eid});}));
+      tb.appendChild(mk('+ Add photos',function(){post({t:'bulk-image',eid:eid});}));
+      tb.appendChild(mk('Alt text',function(){post({t:'alt',eid:eid,alt:el.getAttribute('alt')||''});}));
     }
     if(isLink){
       tb.appendChild(mk('Link',function(){post({t:'link',eid:eid,href:el.getAttribute('href')||''});}));
@@ -468,6 +477,18 @@ async def update_link(slug_site: str, slug: str, body: LinkUpdate, u=Depends(cur
     await db.pages.update_one({"_id":p["_id"]},{"$set":{f"regions.{body.eid}.href":body.href,f"regions.{body.eid}.link":True}})
     return {"ok":True}
 
+@api.put("/pages/{slug_site}/{slug}/alt")
+async def update_alt(slug_site: str, slug: str, body: AltUpdate, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
+    p = await db.pages.find_one({"site":slug_site,"slug":slug})
+    if not p: raise HTTPException(404,"Page not found")
+    r = p.get("regions",{}).get(body.eid)
+    if not r or r.get("type") != "image": raise HTTPException(400,"That element isn't an image")
+    await maybe_auto_snapshot(slug_site)
+    await push_undo(slug_site, slug)
+    await db.pages.update_one({"_id":p["_id"]},{"$set":{f"regions.{body.eid}.alt":body.alt}})
+    return {"ok":True}
+
 @api.post("/pages/{slug_site}/{slug}/op")
 async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_user)):
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
@@ -488,7 +509,7 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
             if r.get("href") is not None and el.name in ("a","button"):
                 el["href"] = r["href"]
         elif r["type"]=="image":
-            _apply_image(el, r["value"])
+            _apply_image(el, r["value"], r.get("alt"))
     target = bodyel.find(attrs={"data-eid":body.eid})
     if not target: raise HTTPException(400,"Element not found")
     if body.op in ("duplicate","add-image"):
@@ -512,6 +533,40 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
     regions = assign_regions(bodyel)
     await db.pages.update_one({"_id":p["_id"]},{"$set":{"template":str(bodyel),"regions":regions}})
     return {"ok":True}
+
+@api.post("/pages/{slug_site}/{slug}/bulk-image")
+async def bulk_image(slug_site: str, slug: str, body: BulkImage, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
+    p = await db.pages.find_one({"site":slug_site,"slug":slug})
+    if not p: raise HTTPException(404,"Page not found")
+    if body.eid not in p.get("regions",{}): raise HTTPException(400,"Unknown region")
+    urls = [u for u in (body.urls or []) if u]
+    if not urls: raise HTTPException(400,"No images to add")
+    await maybe_auto_snapshot(slug_site)
+    await push_undo(slug_site, slug)
+    soup = BeautifulSoup(p["template"], "lxml")
+    bodyel = soup.body or soup
+    for eid, r in p.get("regions",{}).items():
+        el = bodyel.find(attrs={"data-eid":eid})
+        if not el: continue
+        if r["type"]=="text":
+            _set_html(el, r["value"])
+            if r.get("href") is not None and el.name in ("a","button"):
+                el["href"] = r["href"]
+        elif r["type"]=="image":
+            _apply_image(el, r["value"], r.get("alt"))
+    target = bodyel.find(attrs={"data-eid":body.eid})
+    if not target or target.name != "img": raise HTTPException(400,"Select an image first")
+    import copy as _c
+    anchor = target
+    for url in urls:
+        clone = _c.copy(target)
+        _apply_image(clone, url)
+        anchor.insert_after(clone)
+        anchor = clone
+    regions = assign_regions(bodyel)
+    await db.pages.update_one({"_id":p["_id"]},{"$set":{"template":str(bodyel),"regions":regions}})
+    return {"ok":True,"added":len(urls)}
 
 @api.put("/pages/{slug_site}/{slug}/seo")
 async def update_seo(slug_site: str, slug: str, body: SeoUpdate, u=Depends(current_user)):
