@@ -33,6 +33,12 @@ db = client[DB_NAME]
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
+BUILD_VERSION = "2026-07-18-add-site-async-v3"
+
+@api.get("/version")
+async def version():
+    return {"version": BUILD_VERSION, "features": ["add-site-async", "sftp-test", "domain-lock", "multi-site", "publish-confirm"]}
+
 EDIT_TAGS = {"h1","h2","h3","h4","h5","h6","p","li","a","button","blockquote","figcaption"}
 
 # ---------------- auth helpers ----------------
