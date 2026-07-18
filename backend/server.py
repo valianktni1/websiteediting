@@ -416,6 +416,7 @@ async def get_page(slug_site: str, slug: str, u=Depends(current_user)):
 
 @api.put("/pages/{slug_site}/{slug}/region")
 async def update_region(slug_site: str, slug: str, body: RegionUpdate, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
     if body.eid not in p.get("regions",{}): raise HTTPException(400,"Unknown region")
@@ -477,6 +478,7 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
 
 @api.put("/pages/{slug_site}/{slug}/seo")
 async def update_seo(slug_site: str, slug: str, body: SeoUpdate, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     await maybe_auto_snapshot(slug_site)
     await db.pages.update_one({"site":slug_site,"slug":slug},{"$set":{"seo":body.seo}})
     return {"ok":True}
@@ -493,9 +495,9 @@ async def list_snapshots(slug: str, u=Depends(current_user)):
     return out
 
 @api.post("/sites/{slug}/snapshots")
-async def make_snapshot(slug: str, body: dict = {}, u=Depends(current_user)):
+async def make_snapshot(slug: str, body: dict | None = None, u=Depends(current_user)):
     if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
-    sid = await create_snapshot(slug, "manual", (body.get("label") or "Manual restore point"))
+    sid = await create_snapshot(slug, "manual", ((body or {}).get("label") or "Manual restore point"))
     if not sid: raise HTTPException(400,"Nothing to snapshot yet")
     return {"ok":True,"id":sid}
 

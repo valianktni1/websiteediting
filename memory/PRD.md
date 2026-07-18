@@ -195,3 +195,22 @@ pytest + 12/12 frontend E2E (iteration_2.json).
 - Verified 68/68 backend (new tests/test_editor_ops.py) + all frontend flows (iteration_7.json).
 - BACKLOG (offered, not built): move up/down reordering of items; per-client branded login screen;
   Remove-site button; consider splitting server.py (~860 lines) into routes/ modules.
+
+
+## 2026-07 (fork) — Fool-proof ROLLBACK (content snapshots)
+- User wanted clients to self-rescue: roll back to "where they started" or an earlier time.
+- DB CONTENT snapshots (Mongo 'snapshots' coll), separate from SFTP publish-file backups:
+  * 'Original (as imported)' baseline once on first ingest (kind=import, kept forever).
+  * 'Auto-saved' THROTTLED to max 1 per 10 min (maybe_auto_snapshot in update_region/update_link/
+    page_op/update_seo). Prunes auto/pre-publish to newest 80.
+  * 'Before publishing' snapshot on publish. Manual 'Save a restore point now' (kind=manual).
+  * Restore deletes+reinserts all pages + restores site.order, and FIRST creates a 'Before restore'
+    snapshot so the rollback itself is undoable.
+- Endpoints: GET/POST /api/sites/{slug}/snapshots, POST /api/sites/{slug}/snapshots/{id}/restore
+  (all scope_ok — editors roll back only their own site).
+- Frontend: 'Restore points' modal (was Version history) — colour badges, friendly dates + 'X ago',
+  'Roll back to here', 'Save a restore point now'; onRestored reloads dashboard site.
+- CLOSED pre-existing RBAC hole: update_region + update_seo now enforce scope_ok.
+- Verified 68/68 backend (tests/test_snapshots.py) + frontend (iteration_8.json).
+- Test editor: editor_demo_couk@test.local / EditorPass!2026 (site_id=demo-couk) in preview DB.
+- NOTE: rollback restores CONTENT into the editor; user then hits Publish to push it live.
