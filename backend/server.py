@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os, io, re, json, shutil, zipfile, glob, socket, asyncio, logging, uuid
+import base64, mimetypes, urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -29,6 +30,44 @@ for d in (DATA_DIR, MEDIA_DIR, DIST_DIR, BACKUP_DIR):
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
+
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+LLM_PROXY = os.environ.get("INTEGRATION_PROXY_URL", "https://integrations.emergentagent.com") + "/llm/chat/completions"
+
+def _load_image_bytes(slug, src):
+    if src.startswith("http://") or src.startswith("https://"):
+        req = urllib.request.Request(src, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.read(), (r.headers.get_content_type() or "image/jpeg")
+    if src.startswith("assets/uploads/"):
+        path = os.path.join(MEDIA_DIR, slug, src[len("assets/uploads/"):])
+    else:
+        path = os.path.join(SITES_DIR, slug, src)
+    if not os.path.isfile(path):
+        raise ValueError("Image not found on the server yet — save the image first.")
+    mime = mimetypes.guess_type(path)[0] or "image/jpeg"
+    with open(path, "rb") as f:
+        return f.read(), mime
+
+def _suggest_alt_gemini(img_bytes, mime):
+    if mime not in ("image/jpeg", "image/png", "image/webp"):
+        mime = "image/jpeg"
+    b64 = base64.b64encode(img_bytes).decode()
+    payload = {
+        "model": "gemini/gemini-2.5-flash",
+        "messages": [
+            {"role": "system", "content": "You write concise, descriptive alt text for website images for SEO and accessibility. Reply with ONLY the alt text: one sentence, no quotes, max 16 words."},
+            {"role": "user", "content": [
+                {"type": "text", "text": "Write alt text for this image."},
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+            ]},
+        ],
+    }
+    req = urllib.request.Request(LLM_PROXY, data=json.dumps(payload).encode(),
+        headers={"Authorization": f"Bearer {EMERGENT_LLM_KEY}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = json.loads(r.read())
+    return data["choices"][0]["message"]["content"].strip().strip('"').strip()
 
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
@@ -97,6 +136,9 @@ class BulkImage(BaseModel):
     urls: list[str]
 class PageOp(BaseModel):
     op: str
+    eid: str
+    ref: str | None = None
+class AltSuggest(BaseModel):
     eid: str
 class SeoUpdate(BaseModel):
     seo: dict
@@ -312,6 +354,9 @@ EDITOR_INJECT = """
 [data-eid]:hover{outline:2px dashed #A78C46;outline-offset:2px}
 [data-eid].ed-sel{outline:2px solid #A78C46;outline-offset:2px}
 [data-eid][contenteditable="true"]{cursor:text}
+img[data-eid]{cursor:grab}
+img[data-eid].ed-drag{opacity:.4}
+img[data-eid].ed-over{outline:3px solid #A78C46 !important;outline-offset:2px}
 #ed-tb{position:absolute;z-index:2147483000;display:none;gap:4px;background:#12151b;border:1px solid #A78C46;border-radius:8px;padding:5px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-family:Arial,sans-serif}
 #ed-tb button{background:#232833;color:#e9ecf1;border:1px solid #3a4150;border-radius:5px;padding:5px 9px;font-size:12px;line-height:1;cursor:pointer;white-space:nowrap}
 #ed-tb button:hover{background:#A78C46;color:#161616;border-color:#A78C46}
@@ -319,7 +364,8 @@ EDITOR_INJECT = """
 <script>
 document.addEventListener('DOMContentLoaded',function(){
   var tb=document.createElement('div'); tb.id='ed-tb'; document.body.appendChild(tb);
-  var sel=null;
+  var sel=null; var dragEid=null;
+  function _ar(el){var w=el.clientWidth||el.naturalWidth||1,h=el.clientHeight||el.naturalHeight||1;return (w>0&&h>0)?(w/h):1;}
   function post(m){parent.postMessage(m,'*');}
   function place(el){
     var r=el.getBoundingClientRect();
@@ -341,8 +387,8 @@ document.addEventListener('DOMContentLoaded',function(){
     var isLink=el.tagName==='A'||el.tagName==='BUTTON';
     tb.innerHTML='';
     if(isImg){
-      tb.appendChild(mk('Replace',function(){post({t:'image',eid:eid});}));
-      tb.appendChild(mk('+ Add photos',function(){post({t:'bulk-image',eid:eid});}));
+      tb.appendChild(mk('Replace',function(){post({t:'image',eid:eid,ar:_ar(el)});}));
+      tb.appendChild(mk('+ Add photos',function(){post({t:'bulk-image',eid:eid,ar:_ar(el)});}));
       tb.appendChild(mk('Alt text',function(){post({t:'alt',eid:eid,alt:el.getAttribute('alt')||''});}));
     }
     if(isLink){
@@ -359,7 +405,13 @@ document.addEventListener('DOMContentLoaded',function(){
   document.querySelectorAll('[data-eid]').forEach(function(el){
     var eid=el.getAttribute('data-eid');
     if(el.tagName==='IMG'){
+      el.setAttribute('draggable','true');
       el.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();select(el);});
+      el.addEventListener('dragstart',function(e){dragEid=eid;el.classList.add('ed-drag');try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',eid);}catch(_){}});
+      el.addEventListener('dragend',function(){el.classList.remove('ed-drag');document.querySelectorAll('.ed-over').forEach(function(x){x.classList.remove('ed-over');});dragEid=null;});
+      el.addEventListener('dragover',function(e){if(dragEid&&dragEid!==eid){e.preventDefault();e.dataTransfer.dropEffect='move';el.classList.add('ed-over');}});
+      el.addEventListener('dragleave',function(){el.classList.remove('ed-over');});
+      el.addEventListener('drop',function(e){e.preventDefault();el.classList.remove('ed-over');if(dragEid&&dragEid!==eid){post({t:'op',op:'swap-image',eid:dragEid,ref:eid});}dragEid=null;});
     } else {
       el.setAttribute('contenteditable','true');
       el.addEventListener('focus',function(){select(el);});
@@ -489,13 +541,41 @@ async def update_alt(slug_site: str, slug: str, body: AltUpdate, u=Depends(curre
     await db.pages.update_one({"_id":p["_id"]},{"$set":{f"regions.{body.eid}.alt":body.alt}})
     return {"ok":True}
 
+@api.post("/pages/{slug_site}/{slug}/suggest-alt")
+async def suggest_alt(slug_site: str, slug: str, body: AltSuggest, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
+    if not EMERGENT_LLM_KEY:
+        return {"ok":False,"message":"AI suggestions aren't set up on this server yet."}
+    p = await db.pages.find_one({"site":slug_site,"slug":slug})
+    if not p: raise HTTPException(404,"Page not found")
+    r = p.get("regions",{}).get(body.eid)
+    if not r or r.get("type") != "image": raise HTTPException(400,"That element isn't an image")
+    try:
+        img, mime = await asyncio.to_thread(_load_image_bytes, slug_site, r.get("value",""))
+        alt = await asyncio.to_thread(_suggest_alt_gemini, img, mime)
+        if not alt: return {"ok":False,"message":"The AI couldn't describe that image — try typing it in."}
+        return {"ok":True,"alt":alt}
+    except Exception as e:
+        logging.getLogger("uvicorn.error").warning(f"[suggest-alt] {slug_site}/{slug} {body.eid}: {e}")
+        return {"ok":False,"message":f"Couldn't suggest alt text: {e}"}
+
 @api.post("/pages/{slug_site}/{slug}/op")
 async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_user)):
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
-    if body.op not in ("duplicate","delete","add-image","add-button","move-up","move-down"):
+    if body.op not in ("duplicate","delete","add-image","add-button","move-up","move-down","swap-image"):
         raise HTTPException(400,"Unknown operation")
+    if body.op == "swap-image":
+        r1 = p.get("regions",{}).get(body.eid); r2 = p.get("regions",{}).get(body.ref or "")
+        if not r1 or not r2 or r1.get("type") != "image" or r2.get("type") != "image":
+            raise HTTPException(400,"Can only reorder images")
+        await maybe_auto_snapshot(slug_site)
+        await push_undo(slug_site, slug)
+        await db.pages.update_one({"_id":p["_id"]},{"$set":{
+            f"regions.{body.eid}.value": r2.get("value",""), f"regions.{body.eid}.alt": r2.get("alt",""),
+            f"regions.{body.ref}.value": r1.get("value",""), f"regions.{body.ref}.alt": r1.get("alt","")}})
+        return {"ok":True}
     await maybe_auto_snapshot(slug_site)
     await push_undo(slug_site, slug)
     soup = BeautifulSoup(p["template"], "lxml")

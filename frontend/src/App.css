@@ -127,3 +127,11 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .brand-logo{ max-height:64px; max-width:220px; object-fit:contain; margin:0 auto 4px; display:block; }
 .brand-logo-preview{ max-height:56px; max-width:200px; object-fit:contain; display:block; margin:8px 0; border:1px solid var(--line); border-radius:8px; background:#0f1216; padding:8px; }
 .row-actions{ display:flex; gap:8px; }
+
+/* image crop */
+.crop-stage{ position:relative; width:100%; height:340px; background:#0b0d11; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+.crop-zoom{ width:100%; margin:14px 0 4px; accent-color:var(--gold); }
+
+/* alt text */
+.alt-text{ width:100%; background:#0f1216; border:1px solid var(--line); border-radius:8px; color:#e9ecf1; padding:10px 12px; font-size:.9rem; resize:vertical; font-family:inherit; margin-bottom:12px; }
+.alt-text:focus{ outline:none; border-color:var(--gold); }

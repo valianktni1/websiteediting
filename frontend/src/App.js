@@ -1,6 +1,34 @@
 import React, { useState, useEffect, useRef, createContext, useContext, useCallback } from "react";
 import axios from "axios";
+import Cropper from "react-easy-crop";
 import "./App.css";
+
+function loadImg(src) {
+  return new Promise((res, rej) => {
+    const i = new Image(); i.crossOrigin = "anonymous";
+    i.onload = () => res(i); i.onerror = rej; i.src = src;
+  });
+}
+async function getCroppedBlob(src, area) {
+  const img = await loadImg(src);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(area.width); canvas.height = Math.round(area.height);
+  canvas.getContext("2d").drawImage(img, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height);
+  return new Promise(res => canvas.toBlob(b => res(b), "image/jpeg", 0.9));
+}
+async function autoCropToAspect(file, aspect) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImg(url);
+    const sw = img.naturalWidth, sh = img.naturalHeight, ar = aspect || 1;
+    let cw = sw, ch = Math.round(sw / ar);
+    if (ch > sh) { ch = sh; cw = Math.round(sh * ar); }
+    const sx = Math.round((sw - cw) / 2), sy = Math.round((sh - ch) / 2);
+    const canvas = document.createElement("canvas"); canvas.width = cw; canvas.height = ch;
+    canvas.getContext("2d").drawImage(img, sx, sy, cw, ch, 0, 0, cw, ch);
+    return await new Promise(res => canvas.toBlob(b => res(b), "image/jpeg", 0.9));
+  } finally { URL.revokeObjectURL(url); }
+}
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 axios.defaults.withCredentials = true;
@@ -627,16 +655,84 @@ function Dashboard() {
   );
 }
 
+function CropModal({ file, aspect, onCancel, onDone }) {
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [area, setArea] = useState(null);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { const u = URL.createObjectURL(file); setUrl(u); return () => URL.revokeObjectURL(u); }, [file]);
+  const save = async () => {
+    if (!area) return;
+    setBusy(true);
+    const blob = await getCroppedBlob(url, area);
+    onDone(blob);
+  };
+  return (
+    <Modal title="Position your photo" onClose={onCancel}>
+      <p className="hint">Drag to move and use the slider to zoom. Your photo is cropped to fit this spot so the layout stays perfect.</p>
+      <div className="crop-stage" data-testid="crop-stage">
+        {url && <Cropper image={url} crop={crop} zoom={zoom} aspect={aspect || 1} showGrid={false}
+          onCropChange={setCrop} onZoomChange={setZoom} onCropComplete={(_, px) => setArea(px)} />}
+      </div>
+      <input type="range" min="1" max="3" step="0.01" value={zoom} className="crop-zoom" data-testid="crop-zoom"
+        onChange={e => setZoom(parseFloat(e.target.value))} />
+      <div className="modal-actions">
+        <button className="btn ghost" data-testid="crop-cancel" onClick={onCancel}>Cancel</button>
+        <button className="btn primary" data-testid="crop-save" disabled={busy} onClick={save}>{busy ? "Working…" : "Use photo"}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function AltModal({ site, page, eid, initial, onClose, onSaved, flash }) {
+  const [alt, setAlt] = useState(initial || "");
+  const [busy, setBusy] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const suggest = async () => {
+    setSuggesting(true);
+    try {
+      const { data } = await axios.post(`${API}/pages/${site}/${page}/suggest-alt`, { eid }, { timeout: 70000 });
+      if (data.ok && data.alt) setAlt(data.alt);
+      else flash(data.message || "Couldn't suggest alt text");
+    } catch (e) { flash("AI suggestion failed — you can still type it in"); }
+    finally { setSuggesting(false); }
+  };
+  const save = async () => {
+    setBusy(true);
+    try { await axios.put(`${API}/pages/${site}/${page}/alt`, { eid, alt }); flash("Description saved"); onSaved(); }
+    catch (e) { flash("Could not save description"); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Image description (alt text)" onClose={onClose}>
+      <p className="hint">Describe the photo in a few words — it helps Google and screen readers understand your image and keeps your SEO strong after a swap.</p>
+      <textarea className="alt-text" data-testid="alt-textarea" rows={3} value={alt}
+        placeholder="e.g. Bride in a lace A-line gown at Wife To Be, Chester" onChange={e => setAlt(e.target.value)} />
+      <button className="btn" data-testid="alt-suggest" disabled={suggesting} onClick={suggest}>
+        {suggesting ? "✨ Thinking…" : "✨ Suggest with AI"}
+      </button>
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={onClose}>Cancel</button>
+        <button className="btn primary" data-testid="alt-save" disabled={busy} onClick={save}>Save description</button>
+      </div>
+    </Modal>
+  );
+}
+
 function Editor({ site, page, onBack, flash }) {
   const iframeRef = useRef(null);
   const fileRef = useRef(null);
   const bulkFileRef = useRef(null);
   const pendingEid = useRef(null);
+  const pendingAspect = useRef(1);
   const [seo, setSeo] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [showPublish, setShowPublish] = useState(false);
+  const [cropState, setCropState] = useState(null);
+  const [altEdit, setAltEdit] = useState(null);
 
   useEffect(() => {
     axios.get(`${API}/pages/${site}/${page}`).then(r => setSeo(r.data.seo));
@@ -659,17 +755,13 @@ function Editor({ site, page, onBack, flash }) {
       await axios.put(`${API}/pages/${site}/${page}/region`, { eid: d.eid, value: d.value });
       setDirty(true); setCanUndo(true); flash("Saved");
     } else if (d.t === "image") {
-      pendingEid.current = d.eid;
+      pendingEid.current = d.eid; pendingAspect.current = d.ar || 1;
       fileRef.current?.click();
     } else if (d.t === "bulk-image") {
-      pendingEid.current = d.eid;
+      pendingEid.current = d.eid; pendingAspect.current = d.ar || 1;
       bulkFileRef.current?.click();
     } else if (d.t === "alt") {
-      const alt = window.prompt("Describe this image (alt text — helps SEO and screen readers):", d.alt || "");
-      if (alt !== null) {
-        await axios.put(`${API}/pages/${site}/${page}/alt`, { eid: d.eid, alt });
-        setDirty(true); setCanUndo(true); flash("Alt text saved"); setNonce(n => n + 1);
-      }
+      setAltEdit({ eid: d.eid, alt: d.alt || "" });
     } else if (d.t === "link") {
       const url = window.prompt("Link URL (where this button/link goes):", d.href || "");
       if (url !== null) {
@@ -679,9 +771,9 @@ function Editor({ site, page, onBack, flash }) {
     } else if (d.t === "op") {
       if (d.op === "delete" && !window.confirm("Delete this element? It will be removed on the next publish (a backup is always kept).")) return;
       try {
-        await axios.post(`${API}/pages/${site}/${page}/op`, { op: d.op, eid: d.eid });
+        await axios.post(`${API}/pages/${site}/${page}/op`, { op: d.op, eid: d.eid, ref: d.ref });
         setDirty(true); setCanUndo(true);
-        const msg = { "delete": "Deleted", "add-button": "Button added", "add-image": "Image added — click it to replace", "move-up": "Moved up", "move-down": "Moved down" }[d.op] || "Duplicated";
+        const msg = { "delete": "Deleted", "add-button": "Button added", "add-image": "Image added — click it to replace", "move-up": "Moved up", "move-down": "Moved down", "swap-image": "Photos reordered" }[d.op] || "Duplicated";
         flash(msg);
         setNonce(n => n + 1); // reload iframe to reflect structural change
       } catch (e) { flash("Could not apply change"); }
@@ -693,23 +785,32 @@ function Editor({ site, page, onBack, flash }) {
     return () => window.removeEventListener("message", onMessage);
   }, [onMessage]);
 
-  const onFile = async (e) => {
+  const onFile = (e) => {
     const f = e.target.files?.[0]; if (!f) return;
-    const fd = new FormData(); fd.append("file", f);
-    const { data } = await axios.post(`${API}/media/${site}/upload`, fd);
-    await axios.put(`${API}/pages/${site}/${page}/region`, { eid: pendingEid.current, value: data.url });
-    setDirty(true); setCanUndo(true); flash("Image replaced");
-    setNonce(n => n + 1); // reload iframe
+    setCropState({ file: f, aspect: pendingAspect.current, eid: pendingEid.current });
     e.target.value = "";
+  };
+
+  const finishCrop = async (blob) => {
+    const cs = cropState; setCropState(null);
+    flash("Uploading image…");
+    try {
+      const fd = new FormData(); fd.append("file", new File([blob], "photo.jpg", { type: "image/jpeg" }));
+      const { data } = await axios.post(`${API}/media/${site}/upload`, fd);
+      await axios.put(`${API}/pages/${site}/${page}/region`, { eid: cs.eid, value: data.url });
+      setDirty(true); setCanUndo(true); flash("Image replaced"); setNonce(n => n + 1);
+    } catch (err) { flash("Could not replace image"); }
   };
 
   const onBulkFiles = async (e) => {
     const files = Array.from(e.target.files || []); if (!files.length) return;
-    flash(`Uploading ${files.length} photo${files.length > 1 ? "s" : ""}…`);
+    const aspect = pendingAspect.current;
+    flash(`Preparing ${files.length} photo${files.length > 1 ? "s" : ""}…`);
     try {
       const urls = [];
       for (const file of files) {
-        const fd = new FormData(); fd.append("file", file);
+        const blob = await autoCropToAspect(file, aspect);
+        const fd = new FormData(); fd.append("file", new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }));
         const { data } = await axios.post(`${API}/media/${site}/upload`, fd);
         urls.push(data.url);
       }
@@ -761,7 +862,8 @@ function Editor({ site, page, onBack, flash }) {
             <ul>
               <li>Click any <b>text</b> and type to change it.</li>
               <li>Click an element to get a <b>toolbar</b> with actions.</li>
-              <li><b>Images</b>: Replace, "+ Add photos" to drop several into a gallery at once, or "Alt text" for SEO.</li>
+              <li><b>Images</b>: Replace (crop &amp; zoom to fit), "+ Add photos" for a gallery, or "Alt text" (✨ AI can suggest one).</li>
+              <li><b>Reorder photos</b>: drag one photo onto another to swap them, or use ↑/↓.</li>
               <li><b>Links / buttons</b>: "Link" to change where they go.</li>
               <li><b>Duplicate</b>, <b>Delete</b>, or <b>+ Button</b> anything.</li>
               <li>Use <b>↑ Up</b> / <b>↓ Down</b> to reorder items like gallery photos.</li>
@@ -774,6 +876,9 @@ function Editor({ site, page, onBack, flash }) {
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} data-testid="image-input" />
       <input ref={bulkFileRef} type="file" accept="image/*" multiple hidden onChange={onBulkFiles} data-testid="bulk-image-input" />
       {showPublish && <PublishConfirm site={site} flash={flash} onClose={() => setShowPublish(false)} />}
+      {cropState && <CropModal file={cropState.file} aspect={cropState.aspect} onCancel={() => setCropState(null)} onDone={finishCrop} />}
+      {altEdit && <AltModal site={site} page={page} eid={altEdit.eid} initial={altEdit.alt} flash={flash}
+        onClose={() => setAltEdit(null)} onSaved={() => { setAltEdit(null); setDirty(true); setCanUndo(true); setNonce(n => n + 1); }} />}
     </div>
   );
 }
