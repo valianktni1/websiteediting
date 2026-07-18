@@ -312,3 +312,17 @@ publish, data-eid stripped, 400 guard when no block ancestor). Frontend compiles
     hard-code slide counts or need manual re-init.
   * Clients then: edit spec text, replace/add/crop/reorder/caption photos, AI alt, Duplicate car (new listing),
     Delete car (sold). All self-serve, per-site scoped.
+
+## 2026-07-19 (fork) — Reusable car-sales page TEMPLATE (static, CMS-ready)
+Built a professional static car-sales page and verified it ingests cleanly.
+- FILES: /app/sites_source/car-demo/ (index.html + assets/style.css + assets/slider.js). Now also a live
+  demo site "car-demo" in the preview CMS (superadmin can open it in the editor).
+- DESIGN: dark premium dealership aesthetic; Sora (headings) + Manrope (body); amber accent (#d7a24b);
+  sticky header, two-col hero (showroom img in framed card + stats), light "Our latest arrivals" grid of car
+  cards, dark "Why us" + CTA strip + footer. Micro-interactions (hover lift/zoom). No AI-slop patterns.
+- CMS-READY BY DESIGN: 54 editable text regions, 8 editable <img>, 2 <article data-block="car"> cards
+  (→ Duplicate/Delete car buttons), galleries are .gallery>img.slide (each img IS a slide, so "+ Add photos"
+  = new slides), slider.js auto-inits from child imgs on load (CSS scroll-snap + arrows/dots), full SEO head.
+- Placeholder photos are remote Unsplash/Pexels (client replaces via editor upload). For real garage sites,
+  reuse this folder as the starting point (rename brand, swap images) OR build fresh in a separate Emergent
+  chat following the same rules (static HTML, editable content as <img>+text, data-block per car).
