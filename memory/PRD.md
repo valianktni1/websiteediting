@@ -254,3 +254,25 @@ Follow-up to the srcset fix. Verified 100% (10/10) frontend UI in iteration_10.j
   so a click near the very top may select the heading instead of the image. Consider pointer-events tweak.
 - Carry-over review notes from tester were STALE: update_region/update_seo DO enforce scope_ok, and
   make_snapshot uses `body: dict | None = None` (not a mutable default). No action needed.
+
+## 2026-07-19 (fork) — AI alt text + image crop/zoom + drag-to-swap reorder
+Verified 100% for the 3 new features + regressions in iteration_11.json (backend curl-verified).
+1. AI-suggested alt text — AltModal (replaces window.prompt): textarea + '✨ Suggest with AI' + Save.
+   Backend POST /api/pages/{site}/{slug}/suggest-alt {eid} loads the image bytes (uploaded file / site
+   asset / remote URL) and calls Gemini 2.5 Flash for a one-sentence alt. Returned a real description
+   in testing (~4-8s). OPT-IN only (fires on button click) to keep cost near-zero.
+   *** IMPORTANT — deployment-safe LLM call: DID NOT add emergentintegrations to requirements.txt
+   (it broke their public-PyPI Docker build before). Instead call the Emergent proxy directly via
+   stdlib urllib: POST https://integrations.emergentagent.com/llm/chat/completions (OpenAI-compatible),
+   model 'gemini/gemini-2.5-flash', Authorization: Bearer EMERGENT_LLM_KEY. No new backend deps. ***
+   USER DEPLOY ACTION: add EMERGENT_LLM_KEY to their Dockge environment for AI to work in production.
+2. Image crop/zoom on upload — react-easy-crop (added to package.json). Replace flow opens CropModal
+   with aspect = the selected image's on-screen slot (clientW/H, sent as d.ar from the iframe), so photos
+   always fit the layout. crop-stage/crop-zoom/crop-save. Bulk '+ Add photos' auto-center-crops each file
+   to the slot aspect (no per-photo UI) then uploads. All uploads go through /media then region/bulk-image.
+3. Drag-to-swap reorder (images only, user's choice) — galleries here wrap each <img> in its own card
+   div, so DOM ↑/↓ moves are ineffective; instead images are draggable=true and dropping one onto another
+   posts op 'swap-image' {eid, ref} which swaps the two image regions' value+alt (layout-safe, no DOM move).
+   ↑/↓ buttons remain as fallback. Backend: PageOp gained optional `ref`; swap-image handled early in page_op.
+- MINOR (non-blocking, flagged twice by tester, not fixed): hero <h1 contenteditable> overlays the hero
+  <img>, so a click near the very top can select the heading instead of the image. Gallery images unaffected.
