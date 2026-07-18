@@ -258,6 +258,9 @@ function SftpTab({ flash }) {
       <input data-testid="sftp-pass" type="password" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} />
       <label>Remote path</label>
       <input data-testid="sftp-path" value={f.remote_path} onChange={e => setF({ ...f, remote_path: e.target.value })} />
+      <div className="hint" style={{marginTop:8}}>⚠️ Use the <b>full path to this site's own folder</b>, e.g.<br/>
+        <code>/home/USERNAME/domains/DOMAIN.com/public_html</code><br/>
+        A bare <code>public_html</code> points at your account's <b>primary</b> domain and can overwrite the wrong site. Always run <b>Test connection</b> and check the folder it reports before publishing.</div>
       {testMsg && <div className={`test-msg ${testMsg.startsWith("✓") ? "ok" : "bad"}`} data-testid="sftp-test-result">{testMsg}</div>}
       <div className="sftp-btns">
         <button className="btn" data-testid="sftp-test" disabled={!slug || testing} onClick={test}>{testing ? "Testing…" : "Test connection"}</button>
@@ -299,6 +302,48 @@ function SitesTab({ flash }) {
   );
 }
 
+function PublishConfirm({ site, onClose, flash }) {
+  const [t, setT] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { axios.get(`${API}/sites/${site}/publish-target`).then(r => setT(r.data)); }, [site]);
+  const go = async () => {
+    setBusy(true); flash("Publishing…");
+    try {
+      const { data } = await axios.post(`${API}/sites/${site}/publish`);
+      flash(data.message || (data.published ? "Published!" : "Done"));
+    } catch (e) { flash("Publish failed"); }
+    finally { setBusy(false); onClose(); }
+  };
+  return (
+    <Modal title="Publish to Hostinger" onClose={onClose}>
+      {!t && <div className="muted">Checking target…</div>}
+      {t && !t.configured && (
+        <>
+          <p className="hint">SFTP isn't set up yet, so this will only <b>render your site and save a backup</b> — nothing is pushed live. Add your SFTP details in Admin settings to go live.</p>
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={onClose}>Cancel</button>
+            <button className="btn primary" data-testid="publish-confirm" disabled={busy} onClick={go}>{busy ? "Working…" : "Render & back up"}</button>
+          </div>
+        </>
+      )}
+      {t && t.configured && (
+        <>
+          <p className="hint">You're about to push <b>{t.pages} page(s)</b> live to:</p>
+          <div className="target-box" data-testid="publish-target-path">
+            <div className="target-host">{t.host}</div>
+            <div className="target-path">{t.remote_path || "(account home)"}</div>
+          </div>
+          <p className="hint" style={{marginTop:12}}>⚠️ Files with the same names in that folder will be <b>overwritten</b>. Make sure this is <b>{site}</b>'s own folder (e.g. <code>.../domains/&lt;this-site&gt;/public_html</code>) — not another site's. If unsure, cancel and run <b>Test connection</b> first.</p>
+          <div className="modal-actions">
+            <button className="btn ghost" data-testid="publish-cancel" onClick={onClose}>Cancel</button>
+            <button className="btn primary" data-testid="publish-confirm" disabled={busy} onClick={go}>{busy ? "Publishing…" : "Yes, publish to this folder"}</button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function Dashboard() {
   const { user, logout } = useAuth();
   const [site, setSite] = useState(null);
@@ -316,11 +361,6 @@ function Dashboard() {
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 4000); };
 
-  const publish = async () => {
-    flash("Publishing…");
-    const { data } = await axios.post(`${API}/sites/${site.slug}/publish`);
-    flash(data.message || (data.published ? "Published!" : "Done"));
-  };
   const preview = async () => {
     flash("Building preview…");
     const { data } = await axios.post(`${API}/sites/${site.slug}/preview`);
@@ -356,7 +396,7 @@ function Dashboard() {
             <button className="btn" data-testid="add-page-btn" onClick={() => setModal("addpage")}>+ New page</button>
             <button className="btn" data-testid="version-history-btn" onClick={() => setModal("versions")}>Version history</button>
             <button className="btn" data-testid="preview-btn" onClick={preview}>Preview</button>
-            <button className="btn primary" data-testid="publish-btn" onClick={publish}>Publish to Hostinger</button>
+            <button className="btn primary" data-testid="publish-btn" onClick={() => setModal("publish")}>Publish to Hostinger</button>
           </div>
         </div>
         <div className="page-grid">
@@ -375,6 +415,7 @@ function Dashboard() {
       {modal === "addpage" && site && <AddPageModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => { setModal(null); loadSite(); }} />}
       {modal === "versions" && site && <VersionHistory site={site.slug} flash={flash} onClose={() => setModal(null)} />}
       {modal === "admin" && <AdminSettings flash={flash} onClose={() => setModal(null)} />}
+      {modal === "publish" && site && <PublishConfirm site={site.slug} flash={flash} onClose={() => setModal(null)} />}
       {toast && <div className="toast" data-testid="toast">{toast}</div>}
       <Footer />
     </div>

@@ -413,13 +413,26 @@ def _do_test(conf):
                 items = []; found = False
         finally:
             sf.close(); t.close()
+        sample = sorted(items)[:12]
         if found:
-            return {"ok":True,"message":f"Connected. Found {len(items)} items in {remote}. Ready to publish."}
-        return {"ok":True,"message":f"Connected, but {remote} doesn't exist yet — it will be created on first publish."}
+            return {"ok":True,"remote":remote,"count":len(items),"sample":sample,
+                    "message":f"Connected. Target folder is {remote} — it currently has {len(items)} item(s). ⚠️ Publishing will OVERWRITE matching files here, so make sure this is the right site's folder."}
+        return {"ok":True,"remote":remote,"count":0,"sample":[],
+                "message":f"Connected, but {remote} doesn't exist yet — it will be created on first publish. Double-check this is the correct folder for this site."}
     except socket.timeout:
         return {"ok":False,"message":"Connection timed out — check the host and port (Hostinger SFTP is usually port 65002)."}
     except Exception as e:
         return {"ok":False,"message":f"Connection failed: {e}"}
+
+@api.get("/sites/{slug}/publish-target")
+async def publish_target(slug: str, u=Depends(current_user)):
+    s = await db.sites.find_one({"slug":slug})
+    if not s: raise HTTPException(404,"Site not found")
+    sftp = s.get("sftp") or {}
+    pages = await db.pages.count_documents({"site":slug})
+    configured = bool(sftp.get("host"))
+    return {"configured":configured,"host":sftp.get("host",""),
+            "remote_path":sftp.get("remote_path",""),"pages":pages}
 
 def _sftp_push(sftp_conf, local_root):
     t, sf = _sftp_connect(sftp_conf)

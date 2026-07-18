@@ -113,3 +113,20 @@ pytest + 12/12 frontend E2E (iteration_2.json).
 - Deploy note: preview sandbox CANNOT reach Hostinger (their firewall blocks datacenter IPs) — SFTP
   Test/Publish only works from the TrueNAS deployment. User confirmed site files copied to
   /mnt/apps/website_editor/sites/wifetobe. Next: user Saves to GitHub + rebuilds in Dockge.
+
+## 2026-07 (fork) — White-label + CRITICAL publish safety
+- White-labelled: tab title "Ivory Digital Editor", removed ALL Emergent refs (emergent.sh desc,
+  assets.emergent.sh script, PostHog analytics) from public/index.html; added Cormorant Garamond+Jost
+  fonts. In-app brand → "Ivory Digital Editor". Footer "Hosted & powered by Ivory Digital · Weddings
+  by Mark" on login + dashboard.
+- NEAR-MISS FIXED: a bare remote_path "public_html" resolves (via sf.normalize('.')) to the account
+  HOME (/home/USER/public_html) = the PRIMARY domain — publishing there overwrites the WRONG site.
+  Hostinger per-domain path is /home/USER/domains/<domain>/public_html. 
+  Guardrails added:
+  1. SFTP tab hint now shows the full-path format and warns bare public_html is dangerous.
+  2. Test connection returns the RESOLVED absolute target folder + item count + sample, with a warning.
+  3. NEW Publish confirmation modal (PublishConfirm): Publish no longer fires immediately — it shows
+     host + exact target folder + page count + overwrite warning, requires explicit confirm.
+     Backed by GET /api/sites/{slug}/publish-target (current_user, no password leaked).
+  4. wifetobe default remote_path set to /home/u897891218/domains/wifetobe.org/public_html.
+  NOTE: _sftp_push only uploads/overwrites (sf.put) — it never deletes remote files.
