@@ -389,7 +389,11 @@ async def update_link(slug_site: str, slug: str, body: LinkUpdate, u=Depends(cur
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
-    if body.eid not in p.get("regions",{}): raise HTTPException(400,"Unknown region")
+    r = p.get("regions",{}).get(body.eid)
+    if not r: raise HTTPException(400,"Unknown region")
+    el = BeautifulSoup(p["template"], "lxml").find(attrs={"data-eid":body.eid})
+    if r.get("type") != "text" or not el or el.name not in ("a","button"):
+        raise HTTPException(400,"That element isn't a link or button")
     await db.pages.update_one({"_id":p["_id"]},{"$set":{f"regions.{body.eid}.href":body.href,f"regions.{body.eid}.link":True}})
     return {"ok":True}
 

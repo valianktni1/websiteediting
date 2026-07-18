@@ -177,3 +177,21 @@ pytest + 12/12 frontend E2E (iteration_2.json).
   'u897891218' (NOT the FTP-style u897891218.wifetobe.org). Same host/user/password works for ALL
   their domains; only remote_path changes per site, e.g. /home/u897891218/domains/wifetobe.co.uk/public_html.
   User MUST fill Remote path (was left blank → defaults to primary domain public_html).
+
+## 2026-07 (fork) — Editor power-up (structured rich editing)
+- User: editor was "way too basic" (text + image-swap only). Upgraded to click-element → floating
+  toolbar (injected in iframe, id #ed-tb) with actions, kept "structured" so layouts can't break.
+- NEW abilities (all publish-clean, no data-eid leak):
+  * Edit link/button URL — PUT /api/pages/{site}/{slug}/link {eid,href}; validates target is <a>/<button>.
+  * Add another image (clone) / Duplicate / Delete / Add button — POST /api/pages/{site}/{slug}/op
+    {op:add-image|duplicate|delete|add-button, eid}. add-button copies an existing .btn class.
+- Backend refactor (careful, no regressions): shared assign_regions(body) re-indexes data-eid + builds
+  regions with href/link flags (used by ingest AND ops); _set_html() clean fragment injection;
+  render_page applies link hrefs. page_op BAKES current region values into the DOM before mutating so
+  clones carry live edits, then re-indexes. Editor iframe reloads (setNonce) after each structural op.
+- Frontend: Editor onMessage handles text/image/link/op; link uses window.prompt, delete uses confirm.
+  Toolbar buttons are plain <button> in #ed-tb (no testids) — trigger via mousedown (handler uses
+  mousedown+preventDefault to keep contenteditable focus).
+- Verified 68/68 backend (new tests/test_editor_ops.py) + all frontend flows (iteration_7.json).
+- BACKLOG (offered, not built): move up/down reordering of items; per-client branded login screen;
+  Remove-site button; consider splitting server.py (~860 lines) into routes/ modules.
