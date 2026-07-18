@@ -538,7 +538,7 @@ async def add_site(body: AddSite, u=Depends(require_super)):
     job_id = uuid.uuid4().hex
     await db.add_jobs.insert_one({"_id": job_id, "slug": slug, "state": "starting",
         "message": "Connecting to your server…", "pulled": 0, "ingested": 0,
-        "created": datetime.now(timezone.utc).isoformat()})
+        "created": datetime.now(timezone.utc)})
     task = asyncio.create_task(_run_add_job(job_id, slug, conf, body.name, body.domain))
     _bg_tasks.add(task); task.add_done_callback(_bg_tasks.discard)
     return {"job_id": job_id, "slug": slug}
@@ -714,6 +714,10 @@ app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_credentials=Tru
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
+    try:
+        await db.add_jobs.create_index("created", expireAfterSeconds=86400)
+    except Exception:
+        pass
     admin_email = os.environ.get("SUPERADMIN_EMAIL", os.environ.get("ADMIN_EMAIL", "admin@example.com")).lower()
     admin_pw = os.environ.get("SUPERADMIN_PASSWORD", os.environ.get("ADMIN_PASSWORD", "admin123"))
     admin_name = os.environ.get("SUPERADMIN_NAME", "Super Admin")

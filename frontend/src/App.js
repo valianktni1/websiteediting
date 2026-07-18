@@ -303,7 +303,10 @@ function SitesTab({ flash, onSitesChanged }) {
     try {
       const { data } = await axios.post(`${API}/sites/add`, f, { timeout: 30000 });
       const jobId = data.job_id;
+      let ticks = 0;
       const poll = setInterval(async () => {
+        ticks += 1;
+        if (ticks > 90) { clearInterval(poll); setAdding(false); setAddMsg("✗ Timed out waiting for the pull. Check the backend logs, or try 'Test connection' first."); return; }
         try {
           const { data: s } = await axios.get(`${API}/sites/add-status/${jobId}`, { timeout: 20000 });
           const icon = s.state === "done" ? "✓ " : s.state === "error" ? "✗ " : "… ";

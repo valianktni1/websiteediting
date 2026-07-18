@@ -160,3 +160,20 @@ pytest + 12/12 frontend E2E (iteration_2.json).
   @api.post('/sites/{slug}/publish') decorator → publish 404. Restored. LESSON: when inserting an
   endpoint above another, keep the next endpoint's decorator in the replacement. 51/51 backend +
   frontend pass (iteration_5.json). Preview seeded with 2 sites: wifetobe (14pp) + demo-couk (2pp).
+
+## 2026-07 (fork) — Add-site as ASYNC BACKGROUND JOB + Test connection
+- USER ISSUE: "Add site does nothing" on live instance. Root cause: long synchronous SFTP pull held
+  in one HTTP request → killed by their NGINX reverse proxy (timeout) → silent hang. Also they were on
+  an OLD build (no Test button) and had left Remote path EMPTY.
+- FIX: POST /api/sites/add now returns {job_id, slug} immediately; pull+ingest runs as an asyncio
+  background task (tracked in _bg_tasks) that writes progress to Mongo collection add_jobs
+  (state: starting/pulling/ingesting/done/error). Frontend polls GET /api/sites/add-status/{job_id}
+  every 2s (90-tick cap) and shows live progress. No long-held request → proxy can't kill it.
+  add_jobs has a 24h TTL index (created stored as Date).
+- Added POST /api/sftp/test (super-admin, slug-less) + "Test connection" button on the add form for
+  instant credential/path verification; missing-field hint shows which inputs are needed.
+- Verified 55/55 backend + frontend against real SFTP (test.rebex.net) (iteration_6.json).
+- HOSTINGER GOTCHAS for user: on port 65002 (SFTP-over-SSH) the username is the ACCOUNT user
+  'u897891218' (NOT the FTP-style u897891218.wifetobe.org). Same host/user/password works for ALL
+  their domains; only remote_path changes per site, e.g. /home/u897891218/domains/wifetobe.co.uk/public_html.
+  User MUST fill Remote path (was left blank → defaults to primary domain public_html).
