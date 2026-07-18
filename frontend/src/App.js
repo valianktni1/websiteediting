@@ -299,18 +299,28 @@ function SitesTab({ flash, onSitesChanged }) {
     finally { setTesting(false); }
   };
   const addSite = async () => {
-    setAdding(true); setAddMsg("Connecting and pulling files… this can take up to a minute.");
+    setAdding(true); setAddMsg("… Starting…");
     try {
-      const { data } = await axios.post(`${API}/sites/add`, f, { timeout: 180000 });
-      if (data.ok) {
-        setAddMsg(`✓ Pulled ${data.pulled} files and ingested ${data.ingested} pages as "${data.slug}".`);
-        setF({ slug: "", name: "", domain: "", host: "", port: 65002, username: "", password: "", remote_path: "" });
-        load(); onSitesChanged && onSitesChanged();
-      } else {
-        setAddMsg("✗ " + data.message);
-      }
-    } catch (e) { setAddMsg("✗ " + (e.response?.data?.detail || e.message || "Could not add site")); }
-    finally { setAdding(false); }
+      const { data } = await axios.post(`${API}/sites/add`, f, { timeout: 30000 });
+      const jobId = data.job_id;
+      const poll = setInterval(async () => {
+        try {
+          const { data: s } = await axios.get(`${API}/sites/add-status/${jobId}`, { timeout: 20000 });
+          const icon = s.state === "done" ? "✓ " : s.state === "error" ? "✗ " : "… ";
+          setAddMsg(icon + s.message);
+          if (s.state === "done" || s.state === "error") {
+            clearInterval(poll); setAdding(false);
+            if (s.state === "done") {
+              setF({ slug: "", name: "", domain: "", host: "", port: 65002, username: "", password: "", remote_path: "" });
+              load(); onSitesChanged && onSitesChanged();
+            }
+          }
+        } catch (e) { /* keep polling */ }
+      }, 2000);
+    } catch (e) {
+      setAddMsg("✗ " + (e.response?.data?.detail || e.message || "Could not start add-site"));
+      setAdding(false);
+    }
   };
   const missing = [!f.slug && "Short ID", !f.host && "Host", !f.username && "Username", !f.password && "Password"].filter(Boolean);
 

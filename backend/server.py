@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-import os, io, re, json, shutil, zipfile, glob, socket, asyncio, logging
+import os, io, re, json, shutil, zipfile, glob, socket, asyncio, logging, uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -523,9 +523,10 @@ def _sftp_pull(sftp_conf, local_root):
     finally:
         sf.close(); t.close()
 
+_bg_tasks = set()
+
 @api.post("/sites/add")
 async def add_site(body: AddSite, u=Depends(require_super)):
-    log = logging.getLogger("uvicorn.error")
     slug = re.sub(r'[^a-z0-9-]', '-', body.slug.lower()).strip('-')
     if not slug: raise HTTPException(400, "Enter a valid site name (letters, numbers, hyphens).")
     if await db.sites.find_one({"slug": slug}):
@@ -534,30 +535,51 @@ async def add_site(body: AddSite, u=Depends(require_super)):
         raise HTTPException(400, "Enter the SFTP host, username and password.")
     conf = {"host": body.host, "port": body.port, "username": body.username,
             "password": body.password, "remote_path": body.remote_path or "public_html"}
-    log.info(f"[add_site] pulling '{slug}' from {conf['host']}:{conf['port']} path={conf['remote_path']}")
+    job_id = uuid.uuid4().hex
+    await db.add_jobs.insert_one({"_id": job_id, "slug": slug, "state": "starting",
+        "message": "Connecting to your server…", "pulled": 0, "ingested": 0,
+        "created": datetime.now(timezone.utc).isoformat()})
+    task = asyncio.create_task(_run_add_job(job_id, slug, conf, body.name, body.domain))
+    _bg_tasks.add(task); task.add_done_callback(_bg_tasks.discard)
+    return {"job_id": job_id, "slug": slug}
+
+async def _run_add_job(job_id, slug, conf, name, domain):
+    log = logging.getLogger("uvicorn.error")
+    async def upd(**k): await db.add_jobs.update_one({"_id": job_id}, {"$set": k})
     local = os.path.join(SITES_DIR, slug)
     if os.path.exists(local): shutil.rmtree(local, ignore_errors=True)
     try:
+        log.info(f"[add_site] pulling '{slug}' from {conf['host']}:{conf['port']} path={conf['remote_path']}")
+        await upd(state="pulling", message="Downloading files from your server…")
         pulled = await asyncio.to_thread(_sftp_pull, conf, local)
     except socket.timeout:
         shutil.rmtree(local, ignore_errors=True)
-        log.warning(f"[add_site] '{slug}' timed out connecting to {conf['host']}:{conf['port']}")
-        return {"ok": False, "message": "Connection timed out — check the host and port (Hostinger SFTP is usually 65002)."}
+        await upd(state="error", message="Connection timed out — check the host and port (Hostinger SFTP is usually 65002).")
+        return
     except Exception as e:
         shutil.rmtree(local, ignore_errors=True)
         log.warning(f"[add_site] '{slug}' pull failed: {e}")
-        return {"ok": False, "message": f"Couldn't pull the site: {e}"}
+        await upd(state="error", message=f"Couldn't pull the site: {e}")
+        return
     log.info(f"[add_site] '{slug}' pulled {pulled} files, ingesting…")
+    await upd(state="ingesting", message=f"Downloaded {pulled} files. Reading your pages…", pulled=pulled)
     n = await ingest_site(slug)
     if n == 0:
         shutil.rmtree(local, ignore_errors=True)
         await db.sites.delete_one({"slug": slug})
-        log.warning(f"[add_site] '{slug}' no .html found in {conf['remote_path']}")
-        return {"ok": False, "message": f"Pulled {pulled} file(s) but found no .html pages in {conf['remote_path']}. Point the path at the folder that holds index.html."}
+        await upd(state="error", message=f"Downloaded {pulled} file(s) but found no .html pages in '{conf['remote_path']}'. Point the Remote path at the folder that holds index.html.")
+        return
     await db.sites.update_one({"slug": slug}, {"$set": {
-        "name": body.name or slug, "domain": (body.domain or "").strip().lower(), "sftp": conf}})
+        "name": name or slug, "domain": (domain or "").strip().lower(), "sftp": conf}})
     log.info(f"[add_site] '{slug}' DONE — {n} pages ingested")
-    return {"ok": True, "ingested": n, "pulled": pulled, "slug": slug}
+    await upd(state="done", message=f"Added '{slug}' — pulled {pulled} files, {n} pages ready to edit.", ingested=n)
+
+@api.get("/sites/add-status/{job_id}")
+async def add_status(job_id: str, u=Depends(require_super)):
+    j = await db.add_jobs.find_one({"_id": job_id})
+    if not j: raise HTTPException(404, "Job not found")
+    return {"state": j["state"], "message": j["message"], "pulled": j.get("pulled", 0),
+            "ingested": j.get("ingested", 0), "slug": j.get("slug")}
 
 @api.post("/sites/{slug}/publish")
 async def publish(slug: str, u=Depends(current_user)):

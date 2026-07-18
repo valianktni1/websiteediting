@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 6: verified async-job add-site flow, new /sftp/test endpoint, and frontend Test/Add buttons. Updated /app/backend/tests/test_add_site_multi.py to the new {job_id}+poll contract and added 3 new tests for /sftp/test (happy path, missing creds, RBAC) plus add-status RBAC. Full suite: 55/55 passing (was 51/51). Frontend end-to-end: Test connection returned green result (16 items), Add site showed live '…' polling messages then final ✗ 'no .html pages…' — self-cleaned. Regular admin correctly does NOT see the add-site form. State restored: sites=[wifetobe, demo-couk]; wifetobe SFTP remote_path reset to /home/u897891218/domains/wifetobe.org/public_html; add_jobs collection cleared.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "test_report_links": [
+    "/app/backend/tests/test_add_site_multi.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/test_domain_lock.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_iter6.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "POST /api/sites/add now returns {job_id, slug} promptly (<3s observed) and enqueues _run_add_job as an asyncio task tracked in _bg_tasks — correct fix for the reverse-proxy timeout issue.",
+    "Job state persisted in Mongo add_jobs (survives worker restart) — good. State field values 'starting'|'pulling'|'ingesting'|'done'|'error' cover the pipeline. Consider TTL index on add_jobs.created (e.g., 24h) to auto-prune, otherwise long-running instances accumulate rows.",
+    "Self-clean on failure works: after rebex 'no HTML' error, /app/sites/<slug> was removed and db.sites row deleted; add_jobs row remains (deliberate, for polling) but no orphan site data.",
+    "POST /sftp/test (require_super, slug-less) returns ok:true count=16 for rebex — verified. Missing-creds returns ok:false gracefully.",
+    "Frontend polling interval 2s and shows the message from the job unchanged — good UX. Missing-fields hint 'Fill in: Short ID, Host, Username, Password' precisely tracks missing inputs. Both buttons disabled correctly until minimum inputs.",
+    "Regular admin UI correctly hides the add-site form (gated on user.role === 'superadmin') while still showing the 'Sites on this app' list — matches spec.",
+    "Nit: axios call in addSite() uses timeout:30000 but backend returns in <1s now; consider 10s. Not a bug.",
+    "Nit: interval-based polling in App.js addSite() has no upper bound / cap — if the job hangs 'pulling…' forever, UI polls indefinitely. Consider a max-attempts guard (e.g., 60 iterations = 2 min)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_add_site_multi.py (rewrote test_add_site_real_pull_no_html_selfcleans to poll add-status; added test_add_status_rbac, test_sftp_test_endpoint, test_sftp_test_missing_creds, test_sftp_test_rbac)"
+  ],
+  "success_rate": { "backend": "100% (55/55)", "frontend": "100% (all spec'd items verified)" },
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (role=superadmin). Rebex public SFTP test.rebex.net:22 demo/password /pub/example reachable from sandbox and returns 16 items with no HTML (expected).",
+  "seed_data_creation": "Ephemeral test users created + deleted per test (test_admin_*, test_editor_*, test_rbac_*, test_sftp_*, and one UI-flow admin ui_admin@test.com). One UI-flow slug 'uijob' auto-self-cleaned. add_jobs collection cleared after run. wifetobe SFTP remote_path restored.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_add_site_multi.py must remain a single class (xdist loadscope). The add-site job poll cap is 30s in tests — rebex pull takes ~15s. If you need to test a SUCCESSFUL HTML pull, upload an index.html to a controllable SFTP first; Hostinger is unreachable from sandbox. Two new endpoints exercised: POST /api/sftp/test (super-only, slug-less body: SftpSettings) and GET /api/sites/add-status/{job_id} (super-only). Contract: /api/sites/add returns {job_id, slug} — do NOT expect the old {ok, ingested} shape.",
+  "rca of the issue": "N/A — no failures. The main-agent fix (async background job + Mongo-persisted state + 2s frontend polling) verified end-to-end against real SFTP (test.rebex.net)."
+}
