@@ -798,14 +798,17 @@ function Editor({ site, page, onBack, flash }) {
         setDirty(true); setCanUndo(true); flash("Link updated"); setNonce(n => n + 1);
       }
     } else if (d.t === "op") {
-      if (d.op === "delete" && !window.confirm("Delete this element? It will be removed on the next publish (a backup is always kept).")) return;
+      if ((d.op === "delete" || d.op === "delete-block") &&
+          !window.confirm(d.op === "delete-block"
+            ? "Remove this whole card/block? A restore point is saved first, so you can undo it."
+            : "Delete this element? It will be removed on the next publish (a backup is always kept).")) return;
       try {
         await axios.post(`${API}/pages/${site}/${page}/op`, { op: d.op, eid: d.eid, ref: d.ref });
         setDirty(true); setCanUndo(true);
-        const msg = { "delete": "Deleted", "add-button": "Button added", "add-image": "Image added — click it to replace", "move-up": "Moved up", "move-down": "Moved down", "swap-image": "Photos reordered" }[d.op] || "Duplicated";
+        const msg = { "delete": "Deleted", "add-button": "Button added", "add-image": "Image added — click it to replace", "move-up": "Moved up", "move-down": "Moved down", "swap-image": "Photos reordered", "duplicate-block": "Card duplicated", "delete-block": "Card removed" }[d.op] || "Duplicated";
         flash(msg);
         setNonce(n => n + 1); // reload iframe to reflect structural change
-      } catch (e) { flash("Could not apply change"); }
+      } catch (e) { flash(e.response?.data?.detail || "Could not apply change"); }
     }
   }, [site, page, flash]);
 

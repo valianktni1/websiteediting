@@ -291,3 +291,24 @@ Both backend-verified end-to-end via curl (job lifecycle, caption render/leak/bl
    publish (never leaks). A tiny .ivd-caption style is injected into <head> so captions look right on the live
    site. Editor keeps data-caption so the toolbar prefills the current value.
 - No new backend deps. react-easy-crop remains the only added npm package.
+
+## 2026-07-19 (fork) — Block-level duplicate/delete (whole "card") — for car listings etc.
+Backward-compatible, verified end-to-end (temp cars-test page: duplicate 2→3, delete 3→2, data-block kept on
+publish, data-eid stripped, 400 guard when no block ancestor). Frontend compiles.
+- MECHANISM (explicit, no guessing): a container is duplicatable ONLY if the DESIGNER marks it with a
+  `data-block="car"` (any value) attribute when building the site. The editor toolbar then shows gold
+  "Duplicate <name>" / "Delete <name>" buttons (class ed-block-btn) whenever the selected element has a
+  [data-block] ancestor (el.closest('[data-block]')). Sites without data-block are UNCHANGED.
+- Backend: page_op ops 'duplicate-block'/'delete-block' — finds target by data-eid, then
+  target.find_parent(attrs={'data-block':True}); clones (copy) or decomposes that whole container; then
+  assign_regions re-indexes. Guard: 400 if no [data-block] ancestor. push_undo + snapshot as usual (undoable).
+- data-block is a plain data attribute: preserved through ingest, edits, and publish (harmless, keeps blocks
+  duplicatable). Only data-eid + data-caption are stripped on publish.
+- Frontend: delete-block asks a confirm ("Remove this whole card/block?"); flashes "Card duplicated"/"Card removed".
+- DESIGN GUIDANCE for car-sales pages (when building in Emergent, then ingesting):
+  * Wrap each car in a self-contained container with data-block="car" (gallery + specs + enquiry button inside).
+  * Make the image slider AUTO-DETECT its images from children on load (CSS scroll-snap or JS that inits from
+    child imgs) so clients' "+ Add photos" become new slides on the published static page. Avoid sliders that
+    hard-code slide counts or need manual re-init.
+  * Clients then: edit spec text, replace/add/crop/reorder/caption photos, AI alt, Duplicate car (new listing),
+    Delete car (sold). All self-serve, per-site scoped.
