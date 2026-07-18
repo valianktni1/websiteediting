@@ -1,0 +1,24 @@
+{
+  "summary": "Content snapshot/rollback system tested end-to-end on demo-couk (backend + frontend). All 12 new snapshot tests pass; all 56 existing regression tests still pass. UI Restore points modal opens, shows colour badges, saves manual snapshots and restores are undoable.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_snapshots.py",
+    "/app/test_reports/pytest/snapshots.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py update_region (line 417-424) is MISSING scope_ok() check while update_link/page_op/create_page/delete_page all enforce it — an editor scoped to site A could edit text regions on site B. Low practical impact (must know eids) but a real RBAC hole; add: `if not scope_ok(u, slug_site): raise HTTPException(403,...)`.",
+    "update_seo (line 478-482) is likewise missing scope_ok() check.",
+    "make_snapshot signature `body: dict = {}` uses a mutable default — swap to `body: dict | None = Body(default=None)` for safety.",
+    "restore_snapshot deletes pages then re-inserts non-atomically; a mid-restore crash would leave the site empty. Consider inserting into a temp collection or wrapping in a transaction (if replicaset available)."
+  ],
+  "updated_files": ["/app/backend/tests/test_snapshots.py"],
+  "success_rate": {"backend": "100% (68/68)", "frontend": "100% (all UI checks passed)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 ; created editor_demo_couk@test.local / EditorPass!2026 (site_id=demo-couk).",
+  "seed_data_creation": "Created editor user scoped to demo-couk for RBAC test (kept in DB — main agent can delete via /api/users if desired). Backend test_99 re-ingested both demo-couk and wifetobe at the end to restore pristine content. Snapshots collection contains multiple test-generated pre-publish/manual/auto rows for demo-couk from the run — safe to leave (baseline import still present).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_snapshots.py covers: import baseline uniqueness, re-ingest idempotency, manual snapshot, auto-snapshot throttle (3 rapid edits ≤1 snapshot), pre-publish snapshot, rollback reverts text edits AND creates 'Before restore', rollback is undoable via that Before restore, structural rollback (page count + add-image), editor RBAC scope (demo-couk allowed / wifetobe 403), unauth 401. Run with `pytest backend/tests/test_snapshots.py -v`.",
+  "rca of the issue": "No bugs found in the snapshot/rollback flow itself. Only pre-existing missing scope_ok checks on update_region/update_seo flagged as code-review items (not part of this feature)."
+}

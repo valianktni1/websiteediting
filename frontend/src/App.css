@@ -92,6 +92,13 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .admin-list, .version-list{ display:flex; flex-direction:column; gap:8px; margin-bottom:20px; }
 .admin-row, .version-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; background:#0f1216; border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
 .admin-title, .version-date{ font-size:.92rem; color:#e9ecf1; }
+.version-top{ display:flex; align-items:flex-start; gap:16px; justify-content:space-between; margin-bottom:16px; }
+.version-top .btn.primary{ white-space:nowrap; }
+.vbadge{ display:inline-block; font-size:.62rem; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:20px; margin-right:6px; vertical-align:middle; }
+.vbadge.b-start{ background:rgba(167,140,70,.18); color:var(--gold); border:1px solid var(--gold); }
+.vbadge.b-manual{ background:rgba(138,154,123,.18); color:#bcd0ad; border:1px solid var(--sage); }
+.vbadge.b-pub{ background:rgba(90,120,160,.18); color:#a9c4e6; border:1px solid #3a4d66; }
+.vbadge.b-auto{ background:#232833; color:var(--muted); border:1px solid var(--line); }
 .admin-meta, .version-meta{ font-size:.76rem; color:var(--muted); margin-top:2px; font-family:monospace; }
 .admin-form{ border-top:1px solid var(--line); padding-top:16px; }
 .admin-form h4{ font-size:.95rem; margin-bottom:6px; }

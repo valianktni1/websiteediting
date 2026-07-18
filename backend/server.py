@@ -203,7 +203,45 @@ async def ingest_site(site_slug):
         order.append({"slug":slug,"filename":fn,"title":data["title"]})
         count+=1
     await db.sites.update_one({"slug":site_slug},{"$set":{"order":order}})
+    if count and not await db.snapshots.find_one({"site":site_slug,"kind":"import"}):
+        await create_snapshot(site_slug, "import", "Original (as imported)")
     return count
+
+async def _page_docs_for(site):
+    pages = []
+    async for p in db.pages.find({"site":site}):
+        p.pop("_id", None)
+        pages.append(p)
+    return pages
+
+async def create_snapshot(site, kind, label):
+    pages = await _page_docs_for(site)
+    if not pages: return None
+    s = await db.sites.find_one({"slug":site})
+    doc = {"_id": uuid.uuid4().hex, "site": site, "kind": kind, "label": label,
+           "created": datetime.now(timezone.utc), "order": (s or {}).get("order", []),
+           "pages": pages, "page_count": len(pages)}
+    await db.snapshots.insert_one(doc)
+    # prune auto/pre-publish to the 80 most recent (imports + manual kept forever)
+    olds = db.snapshots.find({"site":site,"kind":{"$in":["auto","pre-publish"]}}).sort("created",-1)
+    i = 0
+    async for d in olds:
+        i += 1
+        if i > 80: await db.snapshots.delete_one({"_id":d["_id"]})
+    return doc["_id"]
+
+async def maybe_auto_snapshot(site):
+    last = await db.snapshots.find_one({"site":site}, sort=[("created",-1)])
+    if last:
+        lc = last.get("created")
+        if isinstance(lc, str):
+            try: lc = datetime.fromisoformat(lc)
+            except Exception: lc = None
+        if lc is not None:
+            if lc.tzinfo is None: lc = lc.replace(tzinfo=timezone.utc)
+            if (datetime.now(timezone.utc) - lc).total_seconds() < 600:
+                return
+    await create_snapshot(site, "auto", "Auto-saved")
 
 # ---------------- render ----------------
 def render_page(page, for_editor=False, asset_base=""):
@@ -381,6 +419,7 @@ async def update_region(slug_site: str, slug: str, body: RegionUpdate, u=Depends
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
     if body.eid not in p.get("regions",{}): raise HTTPException(400,"Unknown region")
+    await maybe_auto_snapshot(slug_site)
     await db.pages.update_one({"_id":p["_id"]},{"$set":{f"regions.{body.eid}.value":body.value}})
     return {"ok":True}
 
@@ -394,6 +433,7 @@ async def update_link(slug_site: str, slug: str, body: LinkUpdate, u=Depends(cur
     el = BeautifulSoup(p["template"], "lxml").find(attrs={"data-eid":body.eid})
     if r.get("type") != "text" or not el or el.name not in ("a","button"):
         raise HTTPException(400,"That element isn't a link or button")
+    await maybe_auto_snapshot(slug_site)
     await db.pages.update_one({"_id":p["_id"]},{"$set":{f"regions.{body.eid}.href":body.href,f"regions.{body.eid}.link":True}})
     return {"ok":True}
 
@@ -404,6 +444,7 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
     if not p: raise HTTPException(404,"Page not found")
     if body.op not in ("duplicate","delete","add-image","add-button"):
         raise HTTPException(400,"Unknown operation")
+    await maybe_auto_snapshot(slug_site)
     soup = BeautifulSoup(p["template"], "lxml")
     bodyel = soup.body or soup
     # bake current region values into the template so clones carry live content
@@ -436,8 +477,41 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
 
 @api.put("/pages/{slug_site}/{slug}/seo")
 async def update_seo(slug_site: str, slug: str, body: SeoUpdate, u=Depends(current_user)):
+    await maybe_auto_snapshot(slug_site)
     await db.pages.update_one({"site":slug_site,"slug":slug},{"$set":{"seo":body.seo}})
     return {"ok":True}
+
+@api.get("/sites/{slug}/snapshots")
+async def list_snapshots(slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
+    out = []
+    async for d in db.snapshots.find({"site":slug}).sort("created",-1).limit(200):
+        c = d.get("created")
+        out.append({"id": d["_id"], "kind": d.get("kind"), "label": d.get("label"),
+                    "created": c.isoformat() if hasattr(c,"isoformat") else c,
+                    "pages": d.get("page_count", len(d.get("pages",[])))})
+    return out
+
+@api.post("/sites/{slug}/snapshots")
+async def make_snapshot(slug: str, body: dict = {}, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
+    sid = await create_snapshot(slug, "manual", (body.get("label") or "Manual restore point"))
+    if not sid: raise HTTPException(400,"Nothing to snapshot yet")
+    return {"ok":True,"id":sid}
+
+@api.post("/sites/{slug}/snapshots/{sid}/restore")
+async def restore_snapshot(slug: str, sid: str, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
+    snap = await db.snapshots.find_one({"_id":sid,"site":slug})
+    if not snap: raise HTTPException(404,"Restore point not found")
+    # snapshot the current state first so the restore itself is undoable
+    await create_snapshot(slug, "auto", "Before restore")
+    await db.pages.delete_many({"site":slug})
+    for p in snap.get("pages",[]):
+        doc = dict(p); doc.pop("_id",None); doc["site"] = slug
+        await db.pages.insert_one(doc)
+    await db.sites.update_one({"slug":slug},{"$set":{"order":snap.get("order",[])}})
+    return {"ok":True,"label":snap.get("label"),"pages":len(snap.get("pages",[]))}
 
 # editor iframe html
 @api.get("/editor/page/{slug_site}/{slug}", response_class=HTMLResponse)
@@ -708,6 +782,7 @@ async def add_status(job_id: str, u=Depends(require_super)):
 async def publish(slug: str, u=Depends(current_user)):
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
+    await create_snapshot(slug, "pre-publish", "Before publishing")
     pages=[x async for x in db.pages.find({"site":slug})]
     out = build_dist(slug, pages, s["source_dir"])
     # backup current dist as zip

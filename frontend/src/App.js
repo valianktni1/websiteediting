@@ -105,38 +105,60 @@ function AddPageModal({ site, onClose, onDone, flash }) {
   );
 }
 
-function VersionHistory({ site, onClose, flash }) {
-  const [backups, setBackups] = useState(null);
+function VersionHistory({ site, onClose, flash, onRestored }) {
+  const [snaps, setSnaps] = useState(null);
   const [busy, setBusy] = useState("");
+  const [saving, setSaving] = useState(false);
   const load = useCallback(() => {
-    axios.get(`${API}/sites/${site}/backups`).then(r => setBackups(r.data));
+    axios.get(`${API}/sites/${site}/snapshots`).then(r => setSnaps(r.data));
   }, [site]);
   useEffect(() => { load(); }, [load]);
-  const restore = async (name) => {
-    if (!window.confirm(`Roll back the live site to this version?\n${name}`)) return;
-    setBusy(name);
+  const saveNow = async () => {
+    setSaving(true);
+    try { await axios.post(`${API}/sites/${site}/snapshots`, { label: "Manual restore point" }); flash("Restore point saved"); load(); }
+    catch (e) { flash("Could not save restore point"); }
+    finally { setSaving(false); }
+  };
+  const restore = async (s) => {
+    if (!window.confirm(`Roll back "${site}" to this restore point?\n\n${s.label} — ${fmt(s.created)}\n\nYour current version is saved first, so you can undo this too. You'll then Publish to push it live.`)) return;
+    setBusy(s.id);
     try {
-      const { data } = await axios.post(`${API}/sites/${site}/restore`, { name });
-      flash(data.message || "Restore complete");
-    } catch (e) { flash("Restore failed"); }
+      const { data } = await axios.post(`${API}/sites/${site}/snapshots/${s.id}/restore`);
+      flash(`Rolled back to "${data.label}" (${data.pages} pages). Publish to push it live.`);
+      onRestored && onRestored();
+      load();
+    } catch (e) { flash("Rollback failed"); }
     finally { setBusy(""); }
   };
-  const fmt = (iso) => new Date(iso).toLocaleString();
-  const kb = (b) => `${(b / 1024).toFixed(0)} KB`;
+  const fmt = (iso) => {
+    const d = new Date(iso); const now = new Date();
+    const mins = Math.round((now - d) / 60000);
+    let rel = "";
+    if (mins < 1) rel = "just now";
+    else if (mins < 60) rel = `${mins} min ago`;
+    else if (mins < 1440) rel = `${Math.round(mins / 60)} hr ago`;
+    else rel = `${Math.round(mins / 1440)} days ago`;
+    return `${d.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · ${rel}`;
+  };
+  const badge = (k) => k === "import" ? "Start point" : k === "pre-publish" ? "Before publish" : k === "manual" ? "Saved by you" : "Auto-saved";
+  const badgeCls = (k) => k === "import" ? "b-start" : k === "manual" ? "b-manual" : k === "pre-publish" ? "b-pub" : "b-auto";
   return (
-    <Modal title="Version history" onClose={onClose} wide>
-      <p className="hint">Every time you publish, a full backup is saved. Roll back to any earlier version to restore it live.</p>
-      {backups === null && <div className="muted">Loading…</div>}
-      {backups && backups.length === 0 && <div className="muted" data-testid="no-backups">No backups yet — publish once to create your first restore point.</div>}
+    <Modal title="Restore points" onClose={onClose} wide>
+      <div className="version-top">
+        <p className="hint">Every edit session, every publish, and your original import are saved here. Pick any point to roll the whole site back to how it was then — nothing is lost, and the rollback itself is undoable.</p>
+        <button className="btn primary" data-testid="save-restore-point" disabled={saving} onClick={saveNow}>{saving ? "Saving…" : "Save a restore point now"}</button>
+      </div>
+      {snaps === null && <div className="muted">Loading…</div>}
+      {snaps && snaps.length === 0 && <div className="muted" data-testid="no-snapshots">No restore points yet — they'll build up as you edit.</div>}
       <div className="version-list" data-testid="version-list">
-        {backups && backups.map(b => (
-          <div className="version-row" key={b.name} data-testid={`version-${b.name}`}>
+        {snaps && snaps.map(s => (
+          <div className="version-row" key={s.id} data-testid={`snapshot-${s.id}`}>
             <div>
-              <div className="version-date">{fmt(b.created)}</div>
-              <div className="version-meta">{b.name} · {kb(b.size)}</div>
+              <div className="version-date"><span className={`vbadge ${badgeCls(s.kind)}`}>{badge(s.kind)}</span> {s.label}</div>
+              <div className="version-meta">{fmt(s.created)} · {s.pages} pages</div>
             </div>
-            <button className="btn" disabled={busy === b.name} data-testid={`restore-${b.name}`} onClick={() => restore(b.name)}>
-              {busy === b.name ? "Restoring…" : "Restore"}
+            <button className="btn" disabled={busy === s.id} data-testid={`restore-${s.id}`} onClick={() => restore(s)}>
+              {busy === s.id ? "Rolling back…" : "Roll back to here"}
             </button>
           </div>
         ))}
@@ -499,7 +521,7 @@ function Dashboard() {
           {site && (
             <div className="actions">
               <button className="btn" data-testid="add-page-btn" onClick={() => setModal("addpage")}>+ New page</button>
-              <button className="btn" data-testid="version-history-btn" onClick={() => setModal("versions")}>Version history</button>
+              <button className="btn" data-testid="version-history-btn" onClick={() => setModal("versions")}>Restore points</button>
               <button className="btn" data-testid="preview-btn" onClick={preview}>Preview</button>
               <button className="btn primary" data-testid="publish-btn" onClick={() => setModal("publish")}>Publish to Hostinger</button>
             </div>
@@ -524,7 +546,7 @@ function Dashboard() {
         </div>
       </div>
       {modal === "addpage" && site && <AddPageModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => { setModal(null); loadSites(site.slug); }} />}
-      {modal === "versions" && site && <VersionHistory site={site.slug} flash={flash} onClose={() => setModal(null)} />}
+      {modal === "versions" && site && <VersionHistory site={site.slug} flash={flash} onClose={() => setModal(null)} onRestored={() => loadSites(site.slug)} />}
       {modal === "admin" && <AdminSettings flash={flash} onClose={() => setModal(null)} onSitesChanged={() => loadSites()} />}
       {modal === "publish" && site && <PublishConfirm site={site.slug} flash={flash} onClose={() => setModal(null)} />}
       {toast && <div className="toast" data-testid="toast">{toast}</div>}
