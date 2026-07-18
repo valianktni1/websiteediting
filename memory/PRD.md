@@ -142,3 +142,21 @@ pytest + 12/12 frontend E2E (iteration_2.json).
 - Verified: 43/43 backend (new /app/backend/tests/test_domain_lock.py) + frontend flows (iteration_4.json).
 - NOTE for future stateful backend tests: pytest.ini uses -n 2 --dist loadscope; keep stateful SFTP
   tests inside ONE class (TestDomainLockSuite) to avoid cross-worker DB races.
+
+## 2026-07 (fork) — Multi-site + Super-admin "Add site" (SFTP pull)
+- Role hierarchy: superadmin > admin > editor. Seeded admin auto-migrated to 'superadmin' on startup.
+  require_admin allows admin+superadmin; require_super gates super-admin-only actions.
+- NEW super-admin flow "Add a new site (pull from your server)" — POST /api/sites/add (require_super):
+  connects via SFTP, recursively DOWNLOADS the whole remote folder into SITES_DIR/<slug>, ingests the
+  pages, saves sftp config + locked domain. No uploads/redeploys. Self-cleans (rm dir + DB row) if no
+  .html found. Guards: unique slug, required creds, 5000-file/500MB budget, 15s connect timeout,
+  runs via asyncio.to_thread. Returns 200 {ok:false,message} on failure so UI shows it inline.
+  Verified end-to-end against public SFTP test.rebex.net (pulled 16 files, ingested, self-cleaned).
+- Multi-site dashboard: loads all sites; site-switcher dropdown when >1; editors are scoped to their
+  assigned site_id (only see their site, no switcher). Admin settings → Sites add-site form is
+  superadmin-only; regular admins still see the sites list + Re-ingest.
+- Each new site gets its own client login via existing Users tab (assign editor to the site slug).
+- REGRESSION (found+fixed by testing agent iter5): inserting /sites/add accidentally dropped the
+  @api.post('/sites/{slug}/publish') decorator → publish 404. Restored. LESSON: when inserting an
+  endpoint above another, keep the next endpoint's decorator in the replacement. 51/51 backend +
+  frontend pass (iteration_5.json). Preview seeded with 2 sites: wifetobe (14pp) + demo-couk (2pp).
