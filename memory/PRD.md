@@ -96,3 +96,20 @@ pytest + 12/12 frontend E2E (iteration_2.json).
   Verified: unroutable host fails in 15s with a clear message and server stays responsive.
 - Default remote_path is now "public_html" (Hostinger-relative). SFTP creds NOT stored in preview
   (user enters their real password in the UI to go live).
+
+## 2026-07 (fork) — Docker deploy: compose.yaml + dependency fix
+- Wrote /app/compose.yaml (+ docker-compose.yml) in user's house style: git build-context
+  (github.com/valianktni1/websiteediting.git#main:backend / #main:frontend), mongo + backend +
+  frontend(:30042) + mongodump backup sidecar, network we-network. Datasets: app data
+  /mnt/apps/website_editor/{mongo,sites,data}; backups /mnt/photographers_data/website_editor_backup/{site_backups,db_backups}.
+- Backend now reads SUPERADMIN_EMAIL/PASSWORD/NAME (fallback ADMIN_*) and CORS_ORIGINS, and
+  auto-ingests EVERY site subfolder in SITES_DIR on boot (not just wifetobe). frontend Dockerfile
+  takes REACT_APP_BACKEND_URL build arg (default "" = same-origin via nginx /api proxy).
+- BUILD FIX: backend/requirements.txt was the bloated default template incl. emergentintegrations==0.2.0
+  (private index only) + boto3/pandas/numpy/jq/passlib/python-jose/etc. Docker build failed at pip.
+  Trimmed to the 12 packages actually imported (fastapi, uvicorn, python-dotenv, pymongo, motor,
+  pydantic, pyjwt, bcrypt, python-multipart, beautifulsoup4, lxml, paramiko). Verified: clean install
+  from public PyPI in fresh venv, app imports (30 routes), pytest 30/30 (iteration_3.json).
+- Deploy note: preview sandbox CANNOT reach Hostinger (their firewall blocks datacenter IPs) — SFTP
+  Test/Publish only works from the TrueNAS deployment. User confirmed site files copied to
+  /mnt/apps/website_editor/sites/wifetobe. Next: user Saves to GitHub + rebuilds in Dockge.

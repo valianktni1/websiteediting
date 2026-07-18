@@ -99,15 +99,19 @@ class TestSftp:
         # password should NOT be leaked in GET response
         assert "password" not in g
 
-        # Setting with blank password overwrites password to blank per current impl (model default "").
-        # This is a UX concern: "leaving blank keeps existing" is NOT implemented server-side.
-        # Reset to blank and verify (documents current behavior).
+        # Blank password on PUT preserves the existing stored password (intended UX:
+        # "leave blank to keep"). So has_password stays True even after a blank submit.
         r2 = admin.put(f"{BASE}/api/sites/{SITE}/sftp", json={
-            "host": "", "port": 22, "username": "", "password": "", "remote_path": "/public_html"
+            "host": "ftp.example.com", "port": 22, "username": "u1", "password": "", "remote_path": "public_html"
         })
         assert r2.status_code == 200
         g2 = admin.get(f"{BASE}/api/sites/{SITE}/sftp").json()
-        assert g2["has_password"] is False
+        assert g2["has_password"] is True
+
+        # Cleanup: blank the host so the site is treated as "SFTP not configured" again
+        admin.put(f"{BASE}/api/sites/{SITE}/sftp", json={
+            "host": "", "port": 65002, "username": "", "password": "", "remote_path": "public_html"
+        })
 
 
 # --- Available sites + Re-ingest ---
