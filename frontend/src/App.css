@@ -122,3 +122,8 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .target-box.blocked{ border-color:#ff8a8a; }
 .bad-hint{ color:#ff9a9a; }
 .modal-body code{ background:#0f1216; border:1px solid var(--line); border-radius:5px; padding:1px 5px; font-size:.82em; color:var(--gold); }
+
+/* client branding */
+.brand-logo{ max-height:64px; max-width:220px; object-fit:contain; margin:0 auto 4px; display:block; }
+.brand-logo-preview{ max-height:56px; max-width:200px; object-fit:contain; display:block; margin:8px 0; border:1px solid var(--line); border-radius:8px; background:#0f1216; padding:8px; }
+.row-actions{ display:flex; gap:8px; }

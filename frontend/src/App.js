@@ -34,6 +34,11 @@ function Login() {
   const { login } = useAuth();
   const [email, setEmail] = useState(""); const [pw, setPw] = useState("");
   const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const [brand, setBrand] = useState({ name: "Ivory Digital", logo: "", custom: false });
+  useEffect(() => {
+    axios.get(`${API}/branding`, { params: { host: window.location.hostname } })
+      .then(r => { if (r.data) setBrand(r.data); }).catch(() => {});
+  }, []);
   const submit = async (e) => {
     e.preventDefault(); setErr(""); setBusy(true);
     try { await login(email, pw); }
@@ -43,8 +48,15 @@ function Login() {
   return (
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit} data-testid="login-form">
-        <div className="brand">Ivory Digital <span>Editor</span></div>
-        <p className="sub">Sign in to edit your site</p>
+        {brand.custom && brand.logo ? (
+          <img className="brand-logo" data-testid="brand-logo"
+            src={`${process.env.REACT_APP_BACKEND_URL}${brand.logo}`} alt={brand.name} />
+        ) : (
+          <div className="brand">Ivory Digital <span>Editor</span></div>
+        )}
+        <p className="sub" data-testid="brand-name">
+          {brand.custom ? `${brand.name} · Sign in to edit your site` : "Sign in to edit your site"}
+        </p>
         <input data-testid="login-email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
         <input data-testid="login-password" type="password" placeholder="Password" value={pw} onChange={e=>setPw(e.target.value)} />
         {err && <div className="err" data-testid="login-error">{err}</div>}
@@ -175,11 +187,49 @@ function AdminSettings({ onClose, flash, onSitesChanged }) {
         <button className={`tab ${tab === "users" ? "on" : ""}`} data-testid="tab-users" onClick={() => setTab("users")}>Users</button>
         <button className={`tab ${tab === "sftp" ? "on" : ""}`} data-testid="tab-sftp" onClick={() => setTab("sftp")}>Hostinger SFTP</button>
         <button className={`tab ${tab === "sites" ? "on" : ""}`} data-testid="tab-sites" onClick={() => setTab("sites")}>Sites</button>
+        <button className={`tab ${tab === "branding" ? "on" : ""}`} data-testid="tab-branding" onClick={() => setTab("branding")}>Branding</button>
       </div>
       {tab === "users" && <UsersTab flash={flash} />}
       {tab === "sftp" && <SftpTab flash={flash} />}
       {tab === "sites" && <SitesTab flash={flash} onSitesChanged={onSitesChanged} />}
+      {tab === "branding" && <BrandingTab flash={flash} />}
     </Modal>
+  );
+}
+
+function BrandingTab({ flash }) {
+  const [sites, setSites] = useState([]);
+  const [slug, setSlug] = useState("");
+  const [f, setF] = useState({ brand_name: "", logo_url: "", subdomain: "" });
+  const fileRef = useRef(null);
+  useEffect(() => { axios.get(`${API}/sites`).then(r => { setSites(r.data); if (r.data[0]) setSlug(r.data[0].slug); }); }, []);
+  useEffect(() => { if (!slug) return; axios.get(`${API}/sites/${slug}/branding`).then(r => setF(r.data)); }, [slug]);
+  const save = async () => { await axios.put(`${API}/sites/${slug}/branding`, f); flash("Branding saved"); };
+  const onLogo = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const fd = new FormData(); fd.append("file", file);
+    const { data } = await axios.post(`${API}/media/${slug}/upload`, fd);
+    setF(prev => ({ ...prev, logo_url: data.url })); flash("Logo uploaded — Save to apply"); e.target.value = "";
+  };
+  const logoSrc = f.logo_url ? `${process.env.REACT_APP_BACKEND_URL}/api/asset/${slug}/${f.logo_url}` : "";
+  return (
+    <div className="admin-form">
+      <p className="hint">Give each client their own branded login screen. When they visit their site's subdomain, they'll see their logo and name instead of the default.</p>
+      <label>Site</label>
+      <select data-testid="brand-site" value={slug} onChange={e => setSlug(e.target.value)}>
+        {sites.map(s => <option key={s.slug} value={s.slug}>{s.name || s.slug}</option>)}
+      </select>
+      <label>Brand name (shown on their login)</label>
+      <input data-testid="brand-name-input" value={f.brand_name} placeholder="Wife To Be" onChange={e => setF({ ...f, brand_name: e.target.value })} />
+      <label>Subdomain (the login host that shows this brand)</label>
+      <input data-testid="brand-subdomain" value={f.subdomain} placeholder="wifetobe" onChange={e => setF({ ...f, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} />
+      <div className="hint" style={{ marginTop: 6 }}>e.g. if this client logs in at <code>wifetobe.editor.yourdomain.com</code>, enter <code>wifetobe</code>. The first part of the address is matched.</div>
+      <label>Logo</label>
+      {logoSrc && <img className="brand-logo-preview" data-testid="brand-logo-preview" src={logoSrc} alt="logo preview" />}
+      <button className="btn" data-testid="brand-logo-upload" onClick={() => fileRef.current?.click()}>{f.logo_url ? "Replace logo" : "Upload logo"}</button>
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={onLogo} />
+      <button className="btn primary" data-testid="brand-save" style={{ marginTop: 12 }} disabled={!slug} onClick={save}>Save branding</button>
+    </div>
   );
 }
 
@@ -307,6 +357,15 @@ function SitesTab({ flash, onSitesChanged }) {
     catch (e) { flash("Ingest failed"); }
     finally { setBusy(""); }
   };
+  const removeSite = async (slug) => {
+    const typed = window.prompt(`This permanently removes "${slug}" from the editor — its pages, restore points and downloaded files.\n\n⚠️ Your LIVE Hostinger site is NOT touched.\n\nType the site ID "${slug}" to confirm:`);
+    if (typed === null) return;
+    if (typed !== slug) { flash("Name didn't match — nothing removed"); return; }
+    setBusy(slug);
+    try { const { data } = await axios.delete(`${API}/sites/${slug}`); flash(data.message || `Removed "${slug}"`); load(); onSitesChanged && onSitesChanged(); }
+    catch (e) { flash(e.response?.data?.detail || "Could not remove site"); }
+    finally { setBusy(""); }
+  };
 
   const [f, setF] = useState({ slug: "", name: "", domain: "", host: "", port: 65002, username: "", password: "", remote_path: "" });
   const [adding, setAdding] = useState(false);
@@ -392,9 +451,14 @@ function SitesTab({ flash, onSitesChanged }) {
               <div className="admin-title">{s.slug}</div>
               <div className="admin-meta">{s.pages} pages · {s.ingested ? "ingested" : "not ingested"}</div>
             </div>
-            <button className="btn" disabled={busy === s.slug} data-testid={`ingest-${s.slug}`} onClick={() => ingest(s.slug)}>
-              {busy === s.slug ? "Ingesting…" : s.ingested ? "Re-ingest" : "Ingest"}
-            </button>
+            <div className="row-actions">
+              <button className="btn" disabled={busy === s.slug} data-testid={`ingest-${s.slug}`} onClick={() => ingest(s.slug)}>
+                {busy === s.slug ? "Ingesting…" : s.ingested ? "Re-ingest" : "Ingest"}
+              </button>
+              {user.role === "superadmin" && (
+                <button className="btn danger" disabled={busy === s.slug} data-testid={`remove-site-${s.slug}`} onClick={() => removeSite(s.slug)}>Remove</button>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -471,6 +535,14 @@ function Dashboard() {
     });
   }, [user]);
   useEffect(() => { loadSites(); }, [loadSites]);
+
+  useEffect(() => {
+    if (!site) return;
+    const key = `ivd_sess_${site.slug}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    axios.post(`${API}/sites/${site.slug}/session-snapshot`).catch(() => {});
+  }, [site]);
 
   const switchSite = (slug) => {
     const s = sites.find(x => x.slug === slug);
@@ -562,16 +634,28 @@ function Editor({ site, page, onBack, flash }) {
   const [seo, setSeo] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [nonce, setNonce] = useState(0);
+  const [canUndo, setCanUndo] = useState(false);
 
   useEffect(() => {
     axios.get(`${API}/pages/${site}/${page}`).then(r => setSeo(r.data.seo));
+    axios.get(`${API}/sites/${site}/undo-status`).then(r => setCanUndo(r.data.can_undo)).catch(() => {});
   }, [site, page]);
+
+  const undo = async () => {
+    try {
+      const { data } = await axios.post(`${API}/sites/${site}/undo`);
+      if (data.ok) {
+        flash("Undid your last change"); setCanUndo(data.can_undo); setNonce(n => n + 1);
+        axios.get(`${API}/pages/${site}/${page}`).then(r => setSeo(r.data.seo));
+      } else flash(data.message || "Nothing to undo");
+    } catch (e) { flash("Undo failed"); }
+  };
 
   const onMessage = useCallback(async (ev) => {
     const d = ev.data || {};
     if (d.t === "text") {
       await axios.put(`${API}/pages/${site}/${page}/region`, { eid: d.eid, value: d.value });
-      setDirty(true); flash("Saved");
+      setDirty(true); setCanUndo(true); flash("Saved");
     } else if (d.t === "image") {
       pendingEid.current = d.eid;
       fileRef.current?.click();
@@ -579,14 +663,15 @@ function Editor({ site, page, onBack, flash }) {
       const url = window.prompt("Link URL (where this button/link goes):", d.href || "");
       if (url !== null) {
         await axios.put(`${API}/pages/${site}/${page}/link`, { eid: d.eid, href: url });
-        setDirty(true); flash("Link updated"); setNonce(n => n + 1);
+        setDirty(true); setCanUndo(true); flash("Link updated"); setNonce(n => n + 1);
       }
     } else if (d.t === "op") {
       if (d.op === "delete" && !window.confirm("Delete this element? It will be removed on the next publish (a backup is always kept).")) return;
       try {
         await axios.post(`${API}/pages/${site}/${page}/op`, { op: d.op, eid: d.eid });
-        setDirty(true);
-        flash(d.op === "delete" ? "Deleted" : d.op === "add-button" ? "Button added" : d.op === "add-image" ? "Image added — click it to replace" : "Duplicated");
+        setDirty(true); setCanUndo(true);
+        const msg = { "delete": "Deleted", "add-button": "Button added", "add-image": "Image added — click it to replace", "move-up": "Moved up", "move-down": "Moved down" }[d.op] || "Duplicated";
+        flash(msg);
         setNonce(n => n + 1); // reload iframe to reflect structural change
       } catch (e) { flash("Could not apply change"); }
     }
@@ -602,7 +687,7 @@ function Editor({ site, page, onBack, flash }) {
     const fd = new FormData(); fd.append("file", f);
     const { data } = await axios.post(`${API}/media/${site}/upload`, fd);
     await axios.put(`${API}/pages/${site}/${page}/region`, { eid: pendingEid.current, value: data.url });
-    setDirty(true); flash("Image replaced");
+    setDirty(true); setCanUndo(true); flash("Image replaced");
     setNonce(n => n + 1); // reload iframe
     e.target.value = "";
   };
@@ -618,6 +703,7 @@ function Editor({ site, page, onBack, flash }) {
         <button className="btn ghost" data-testid="editor-back" onClick={onBack}>← All pages</button>
         <div className="editing-label">Editing: <b>/{page === "home" ? "" : page + "/"}</b></div>
         <div className="topbar-right">
+          <button className="btn ghost" data-testid="editor-undo" disabled={!canUndo} onClick={undo}>↶ Undo last change</button>
           {dirty && <span className="dirty">● unsaved changes will publish on next Publish</span>}
         </div>
       </header>
@@ -649,6 +735,8 @@ function Editor({ site, page, onBack, flash }) {
               <li><b>Images</b>: Replace, or "+ Add another" to grow a gallery.</li>
               <li><b>Links / buttons</b>: "Link" to change where they go.</li>
               <li><b>Duplicate</b>, <b>Delete</b>, or <b>+ Button</b> anything.</li>
+              <li>Use <b>↑ Up</b> / <b>↓ Down</b> to reorder items like gallery photos.</li>
+              <li>Made a mistake? Hit <b>↶ Undo last change</b> up top.</li>
               <li>Hit <b>Publish</b> on the dashboard to go live.</li>
             </ul>
           </div>

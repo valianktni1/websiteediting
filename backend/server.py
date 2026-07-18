@@ -33,11 +33,11 @@ db = client[DB_NAME]
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-07-18-add-site-async-v3"
+BUILD_VERSION = "2026-07-19-editor-plus-v4"
 
 @api.get("/version")
 async def version():
-    return {"version": BUILD_VERSION, "features": ["add-site-async", "sftp-test", "domain-lock", "multi-site", "publish-confirm"]}
+    return {"version": BUILD_VERSION, "features": ["add-site-async", "sftp-test", "domain-lock", "multi-site", "publish-confirm", "session-snapshot", "reorder", "undo", "branding", "remove-site"]}
 
 EDIT_TAGS = {"h1","h2","h3","h4","h5","h6","p","li","a","button","blockquote","figcaption"}
 
@@ -111,6 +111,11 @@ class AddSite(BaseModel):
     username: str
     password: str
     remote_path: str = "public_html"
+
+class Branding(BaseModel):
+    brand_name: str = ""
+    logo_url: str = ""
+    subdomain: str = ""
 
 # ---------------- ingestion ----------------
 def _clean_links(s):
@@ -222,8 +227,8 @@ async def create_snapshot(site, kind, label):
            "created": datetime.now(timezone.utc), "order": (s or {}).get("order", []),
            "pages": pages, "page_count": len(pages)}
     await db.snapshots.insert_one(doc)
-    # prune auto/pre-publish to the 80 most recent (imports + manual kept forever)
-    olds = db.snapshots.find({"site":site,"kind":{"$in":["auto","pre-publish"]}}).sort("created",-1)
+    # prune auto/pre-publish/session to the 80 most recent (imports + manual kept forever)
+    olds = db.snapshots.find({"site":site,"kind":{"$in":["auto","pre-publish","session"]}}).sort("created",-1)
     i = 0
     async for d in olds:
         i += 1
@@ -242,6 +247,18 @@ async def maybe_auto_snapshot(site):
             if (datetime.now(timezone.utc) - lc).total_seconds() < 600:
                 return
     await create_snapshot(site, "auto", "Auto-saved")
+
+async def push_undo(site, slug):
+    """Save the current page state so the client can instantly undo their last edit."""
+    p = await db.pages.find_one({"site":site,"slug":slug})
+    if not p: return
+    doc = dict(p); doc.pop("_id", None)
+    await db.edit_history.insert_one({"_id": uuid.uuid4().hex, "site": site, "slug": slug,
+        "page": doc, "created": datetime.now(timezone.utc)})
+    i = 0
+    async for d in db.edit_history.find({"site":site}).sort("created",-1):
+        i += 1
+        if i > 50: await db.edit_history.delete_one({"_id": d["_id"]})
 
 # ---------------- render ----------------
 def render_page(page, for_editor=False, asset_base=""):
@@ -313,6 +330,8 @@ document.addEventListener('DOMContentLoaded',function(){
     if(isLink){
       tb.appendChild(mk('Link',function(){post({t:'link',eid:eid,href:el.getAttribute('href')||''});}));
     }
+    tb.appendChild(mk('↑ Up',function(){post({t:'op',op:'move-up',eid:eid});}));
+    tb.appendChild(mk('↓ Down',function(){post({t:'op',op:'move-down',eid:eid});}));
     tb.appendChild(mk('Duplicate',function(){post({t:'op',op:'duplicate',eid:eid});}));
     tb.appendChild(mk('+ Button',function(){post({t:'op',op:'add-button',eid:eid});}));
     tb.appendChild(mk('Delete',function(){post({t:'op',op:'delete',eid:eid});}));
@@ -421,6 +440,7 @@ async def update_region(slug_site: str, slug: str, body: RegionUpdate, u=Depends
     if not p: raise HTTPException(404,"Page not found")
     if body.eid not in p.get("regions",{}): raise HTTPException(400,"Unknown region")
     await maybe_auto_snapshot(slug_site)
+    await push_undo(slug_site, slug)
     await db.pages.update_one({"_id":p["_id"]},{"$set":{f"regions.{body.eid}.value":body.value}})
     return {"ok":True}
 
@@ -435,6 +455,7 @@ async def update_link(slug_site: str, slug: str, body: LinkUpdate, u=Depends(cur
     if r.get("type") != "text" or not el or el.name not in ("a","button"):
         raise HTTPException(400,"That element isn't a link or button")
     await maybe_auto_snapshot(slug_site)
+    await push_undo(slug_site, slug)
     await db.pages.update_one({"_id":p["_id"]},{"$set":{f"regions.{body.eid}.href":body.href,f"regions.{body.eid}.link":True}})
     return {"ok":True}
 
@@ -443,9 +464,10 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
-    if body.op not in ("duplicate","delete","add-image","add-button"):
+    if body.op not in ("duplicate","delete","add-image","add-button","move-up","move-down"):
         raise HTTPException(400,"Unknown operation")
     await maybe_auto_snapshot(slug_site)
+    await push_undo(slug_site, slug)
     soup = BeautifulSoup(p["template"], "lxml")
     bodyel = soup.body or soup
     # bake current region values into the template so clones carry live content
@@ -472,6 +494,12 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
         else: new["class"] = ["btn"]
         new.string = "New button"
         target.insert_after(new)
+    elif body.op=="move-up":
+        prev = target.find_previous_sibling()
+        if prev: prev.insert_before(target.extract())
+    elif body.op=="move-down":
+        nxt = target.find_next_sibling()
+        if nxt: nxt.insert_after(target.extract())
     regions = assign_regions(bodyel)
     await db.pages.update_one({"_id":p["_id"]},{"$set":{"template":str(bodyel),"regions":regions}})
     return {"ok":True}
@@ -480,6 +508,7 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
 async def update_seo(slug_site: str, slug: str, body: SeoUpdate, u=Depends(current_user)):
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     await maybe_auto_snapshot(slug_site)
+    await push_undo(slug_site, slug)
     await db.pages.update_one({"site":slug_site,"slug":slug},{"$set":{"seo":body.seo}})
     return {"ok":True}
 
@@ -514,6 +543,74 @@ async def restore_snapshot(slug: str, sid: str, u=Depends(current_user)):
         await db.pages.insert_one(doc)
     await db.sites.update_one({"slug":slug},{"$set":{"order":snap.get("order",[])}})
     return {"ok":True,"label":snap.get("label"),"pages":len(snap.get("pages",[]))}
+
+@api.post("/sites/{slug}/session-snapshot")
+async def session_snapshot(slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
+    sid = await create_snapshot(slug, "session", "Session start (auto)")
+    return {"ok": bool(sid), "id": sid}
+
+@api.get("/sites/{slug}/undo-status")
+async def undo_status(slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
+    n = await db.edit_history.count_documents({"site":slug})
+    return {"can_undo": n > 0, "count": n}
+
+@api.post("/sites/{slug}/undo")
+async def undo(slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
+    h = await db.edit_history.find_one({"site":slug}, sort=[("created",-1)])
+    if not h: return {"ok": False, "message": "Nothing to undo yet."}
+    doc = dict(h["page"]); doc.pop("_id", None); doc["site"] = slug
+    await db.pages.replace_one({"site":slug,"slug":doc["slug"]}, doc)
+    await db.edit_history.delete_one({"_id": h["_id"]})
+    remaining = await db.edit_history.count_documents({"site":slug})
+    return {"ok": True, "slug": doc["slug"], "can_undo": remaining > 0, "message": "Undid your last change."}
+
+@api.get("/branding")
+async def public_branding(host: str = ""):
+    label = host.split(":")[0].split(".")[0].lower().strip() if host else ""
+    s = None
+    if label:
+        s = await db.sites.find_one({"$or":[{"subdomain":label},{"slug":label}]})
+    if not s or not (s.get("branding") or {}).get("brand_name") and not (s.get("branding") or {}).get("logo_url"):
+        return {"name":"Ivory Digital","logo":"","custom":False}
+    b = s.get("branding") or {}
+    logo = b.get("logo_url","")
+    return {"name": b.get("brand_name") or s.get("name") or s.get("slug"),
+            "logo": f"/api/asset/{s['slug']}/{logo}" if logo else "",
+            "custom": True}
+
+@api.get("/sites/{slug}/branding")
+async def get_branding(slug: str, u=Depends(require_admin)):
+    s = await db.sites.find_one({"slug":slug})
+    if not s: raise HTTPException(404,"Site not found")
+    b = s.get("branding") or {}
+    return {"brand_name": b.get("brand_name",""), "logo_url": b.get("logo_url",""), "subdomain": s.get("subdomain","")}
+
+@api.put("/sites/{slug}/branding")
+async def set_branding(slug: str, body: Branding, u=Depends(require_admin)):
+    s = await db.sites.find_one({"slug":slug})
+    if not s: raise HTTPException(404,"Site not found")
+    sub = re.sub(r'[^a-z0-9-]', '', body.subdomain.lower())
+    await db.sites.update_one({"slug":slug},{"$set":{
+        "branding": {"brand_name": body.brand_name.strip(), "logo_url": body.logo_url.strip()},
+        "subdomain": sub}})
+    return {"ok":True}
+
+@api.delete("/sites/{slug}")
+async def remove_site(slug: str, u=Depends(require_super)):
+    s = await db.sites.find_one({"slug":slug})
+    if not s: raise HTTPException(404,"Site not found")
+    await db.pages.delete_many({"site":slug})
+    await db.snapshots.delete_many({"site":slug})
+    await db.edit_history.delete_many({"site":slug})
+    await db.add_jobs.delete_many({"slug":slug})
+    await db.sites.delete_one({"slug":slug})
+    await db.users.update_many({"site_id":slug},{"$set":{"site_id":None}})
+    for d in (os.path.join(SITES_DIR, slug), os.path.join(MEDIA_DIR, slug), os.path.join(DIST_DIR, slug)):
+        shutil.rmtree(d, ignore_errors=True)
+    return {"ok":True,"message":f"Removed '{slug}' from the editor. Your live site was not touched."}
 
 # editor iframe html
 @api.get("/editor/page/{slug_site}/{slug}", response_class=HTMLResponse)
@@ -906,6 +1003,13 @@ async def restore(slug: str, body: dict, u=Depends(require_admin)):
         shutil.rmtree(tmp, ignore_errors=True)
 
 app.include_router(api)
+
+@app.middleware("http")
+async def _noindex_header(request, call_next):
+    resp = await call_next(request)
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet"
+    return resp
+
 _cors = os.environ.get("CORS_ORIGINS", "*")
 _origins = ["*"] if _cors.strip() == "*" else [o.strip() for o in _cors.split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_credentials=True,
