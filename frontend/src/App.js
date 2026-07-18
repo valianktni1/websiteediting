@@ -22,6 +22,14 @@ function AuthProvider({ children }) {
   return <Auth.Provider value={{ user, loading, login, logout }}>{children}</Auth.Provider>;
 }
 
+function Footer() {
+  return (
+    <footer className="site-footer" data-testid="app-footer">
+      Hosted &amp; powered by <b>Ivory Digital</b> · Weddings by Mark
+    </footer>
+  );
+}
+
 function Login() {
   const { login } = useAuth();
   const [email, setEmail] = useState(""); const [pw, setPw] = useState("");
@@ -35,13 +43,14 @@ function Login() {
   return (
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit} data-testid="login-form">
-        <div className="brand">Website <span>Editor</span></div>
+        <div className="brand">Ivory Digital <span>Editor</span></div>
         <p className="sub">Sign in to edit your site</p>
         <input data-testid="login-email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
         <input data-testid="login-password" type="password" placeholder="Password" value={pw} onChange={e=>setPw(e.target.value)} />
         {err && <div className="err" data-testid="login-error">{err}</div>}
         <button data-testid="login-submit" disabled={busy}>{busy ? "Signing in…" : "Sign In"}</button>
       </form>
+      <Footer />
     </div>
   );
 }
@@ -330,7 +339,7 @@ function Dashboard() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">Website <span>Editor</span></div>
+        <div className="brand">Ivory Digital <span>Editor</span></div>
         <div className="topbar-right">
           {user.role === "admin" && <button className="btn ghost" data-testid="admin-settings-btn" onClick={() => setModal("admin")}>Admin settings</button>}
           <span className="who" data-testid="current-user">{user.email} · {user.role}</span>
@@ -367,6 +376,7 @@ function Dashboard() {
       {modal === "versions" && site && <VersionHistory site={site.slug} flash={flash} onClose={() => setModal(null)} />}
       {modal === "admin" && <AdminSettings flash={flash} onClose={() => setModal(null)} />}
       {toast && <div className="toast" data-testid="toast">{toast}</div>}
+      <Footer />
     </div>
   );
 }

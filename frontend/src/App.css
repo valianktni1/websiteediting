@@ -98,3 +98,8 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .test-msg{ margin-top:14px; padding:10px 12px; border-radius:9px; font-size:.85rem; line-height:1.4; }
 .test-msg.ok{ background:rgba(138,154,123,.14); border:1px solid var(--sage); color:#bcd0ad; }
 .test-msg.bad{ background:rgba(255,138,138,.1); border:1px solid #5a3232; color:#ff9a9a; }
+
+/* white-label footer */
+.site-footer{ text-align:center; padding:22px 16px; color:var(--muted); font-size:.78rem; letter-spacing:.02em; border-top:1px solid var(--line); margin-top:28px; }
+.site-footer b{ color:var(--gold); font-weight:600; }
+.login-wrap .site-footer{ position:fixed; bottom:0; left:0; right:0; border-top:none; margin-top:0; background:transparent; }
