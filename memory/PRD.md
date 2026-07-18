@@ -130,3 +130,15 @@ pytest + 12/12 frontend E2E (iteration_2.json).
      Backed by GET /api/sites/{slug}/publish-target (current_user, no password leaked).
   4. wifetobe default remote_path set to /home/u897891218/domains/wifetobe.org/public_html.
   NOTE: _sftp_push only uploads/overwrites (sf.put) — it never deletes remote files.
+
+## 2026-07 (fork) — Per-site DOMAIN LOCK (belt-and-braces)
+- Each site now has a `domain` field. If set, the app HARD-REFUSES to publish/restore unless the
+  SFTP remote path contains that domain (case-insensitive substring). wifetobe locked to wifetobe.org.
+- Enforced at TWO layers: _domain_guard() pre-check in publish/restore handlers (raises 400 BEFORE
+  any SFTP connection — <1s, no 15s timeout), AND inside _sftp_push after path resolution.
+- UI: Admin → Hostinger SFTP has a "Locked domain 🔒" field (sftp-domain). Publish confirm modal
+  shows path_ok — when the path lacks the locked domain it renders a red "Blocked" state and DISABLES
+  the confirm button (data-testid publish-blocked). publish-target endpoint returns domain + path_ok.
+- Verified: 43/43 backend (new /app/backend/tests/test_domain_lock.py) + frontend flows (iteration_4.json).
+- NOTE for future stateful backend tests: pytest.ini uses -n 2 --dist loadscope; keep stateful SFTP
+  tests inside ONE class (TestDomainLockSuite) to avoid cross-worker DB races.
