@@ -214,3 +214,26 @@ pytest + 12/12 frontend E2E (iteration_2.json).
 - Verified 68/68 backend (tests/test_snapshots.py) + frontend (iteration_8.json).
 - Test editor: editor_demo_couk@test.local / EditorPass!2026 (site_id=demo-couk) in preview DB.
 - NOTE: rollback restores CONTENT into the editor; user then hits Publish to push it live.
+
+## 2026-07-19 (fork) — 5-feature batch + CRITICAL image srcset bug fix
+Shipped 5 backlog features (backend curl-verified; frontend UI test cut short, pending):
+1. Auto restore point per session — POST /api/sites/{slug}/session-snapshot (kind='session',
+   pruned with auto/pre-publish). Frontend fires once/session via sessionStorage key ivd_sess_<slug>.
+2. Reorder items — page_op now supports move-up/move-down (find_previous/next_sibling + extract/insert).
+   Editor toolbar gained '↑ Up' / '↓ Down' buttons (EDITOR_INJECT).
+3. Undo last change — push_undo() saves page state to db.edit_history (cap 50/site) on every
+   region/link/op/seo edit. POST /api/sites/{slug}/undo restores latest; GET .../undo-status for button
+   enabled state. Editor header '↶ Undo last change' (data-testid editor-undo).
+4. Client branding — sites get branding{brand_name,logo_url}+subdomain. Public GET /api/branding?host=
+   maps first host label→site. Login screen shows logo+name. Admin → Branding tab (get/set + logo upload).
+5. Remove site — DELETE /api/sites/{slug} (require_super): purges pages/snapshots/edit_history/add_jobs/
+   site doc + SITES/MEDIA/DIST dirs, unassigns users. UI: Sites tab remove-site-<slug> w/ typed-slug prompt.
+
+CRITICAL BUG (user: "added images to wifetobe.co.uk, published, not showing live"):
+- ROOT CAUSE: source <img> tags use responsive srcset+sizes. Editor only updated `src`; browsers
+  PREFER srcset, so the OLD image kept showing after replace.
+- FIX: _apply_image(el,value) — when an image's value differs from its original template src, strip
+  srcset/sizes/data-src(set)/data-lazy-*. Applied in render_page (editor + publish) AND page_op bake.
+  Works RETROACTIVELY (compares value vs original src, no flag/migration). Unchanged imgs keep srcset.
+- Verified via build render: replaced img → src set, srcset/sizes removed; unchanged imgs keep srcset.
+- USER ACTION: Save to GitHub → rebuild containers → RE-PUBLISH (their existing edits auto-fix on re-publish).

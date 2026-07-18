@@ -130,6 +130,15 @@ def _set_html(el, html):
     for c in list(frag.contents):
         el.append(c)
 
+def _apply_image(el, value):
+    """Set an image src; if it was changed, drop responsive attrs (srcset/sizes/data-src)
+    that would otherwise make the browser keep showing the OLD image."""
+    orig = el.get("src", "")
+    el["src"] = value
+    if value != orig:
+        for a in ("srcset", "sizes", "data-src", "data-srcset", "data-lazy-src", "data-lazy-srcset"):
+            if el.has_attr(a): del el[a]
+
 def assign_regions(body):
     """Clear + reassign data-eid across the body and return a fresh regions dict.
     Shared by ingest and structural edits so eids/regions stay consistent."""
@@ -273,7 +282,7 @@ def render_page(page, for_editor=False, asset_base=""):
             if r.get("href") is not None and el.name in ("a","button"):
                 el["href"] = r["href"]
         elif r["type"]=="image":
-            el["src"] = r["value"]
+            _apply_image(el, r["value"])
         if not for_editor and el.has_attr("data-eid"):
             del el["data-eid"]
     inner = bodyel.decode_contents()
@@ -479,7 +488,7 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
             if r.get("href") is not None and el.name in ("a","button"):
                 el["href"] = r["href"]
         elif r["type"]=="image":
-            el["src"] = r["value"]
+            _apply_image(el, r["value"])
     target = bodyel.find(attrs={"data-eid":body.eid})
     if not target: raise HTTPException(400,"Element not found")
     if body.op in ("duplicate","add-image"):
