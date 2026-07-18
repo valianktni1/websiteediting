@@ -237,3 +237,20 @@ CRITICAL BUG (user: "added images to wifetobe.co.uk, published, not showing live
   Works RETROACTIVELY (compares value vs original src, no flag/migration). Unchanged imgs keep srcset.
 - Verified via build render: replaced img → src set, srcset/sizes removed; unchanged imgs keep srcset.
 - USER ACTION: Save to GitHub → rebuild containers → RE-PUBLISH (their existing edits auto-fix on re-publish).
+
+## 2026-07-19 (fork) — Editor UX: in-editor Publish + Alt text + Bulk gallery upload
+Follow-up to the srcset fix. Verified 100% (10/10) frontend UI in iteration_10.json (backend curl-verified).
+1. Publish from the editor — Editor header now has a 'Publish to Hostinger' button (data-testid
+   editor-publish-btn) that opens the SAME PublishConfirm modal; no need to go back to the dashboard.
+2. Image alt text — regions now store `alt` (captured on ingest). Toolbar 'Alt text' button →
+   window.prompt (prefilled from element) → PUT /api/pages/{site}/{slug}/alt {eid,alt}. _apply_image()
+   gained an optional alt arg; render_page + page_op + bulk_image all apply it. Editors keep SEO after swaps.
+3. Bulk gallery upload — toolbar '+ Add photos' (replaced '+ Add another') opens a MULTIPLE file input
+   (bulk-image-input). Frontend uploads each file, then POST /api/pages/{site}/{slug}/bulk-image
+   {eid, urls[]} clones the selected <img> once per url (srcset stripped via _apply_image), preserving order.
+- Toolbar (in EDITOR_INJECT, inside iframe): Replace | + Add photos | Alt text | ↑ Up | ↓ Down |
+  Duplicate | + Button | Delete | Link.
+- NOTE (minor UX, not blocking, flagged by tester): hero <h1 contenteditable> can overlap the hero <img>,
+  so a click near the very top may select the heading instead of the image. Consider pointer-events tweak.
+- Carry-over review notes from tester were STALE: update_region/update_seo DO enforce scope_ok, and
+  make_snapshot uses `body: dict | None = None` (not a mutable default). No action needed.
