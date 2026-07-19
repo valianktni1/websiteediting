@@ -384,3 +384,19 @@ backend curl-verified + rendered-preview screenshot.
   site palette; hero + 2 data-block='car' cards (sliders, Sold/Reserved badges, per-car enquiry) + why + CTA.
   Fully editable in the CMS (Status/Move/Duplicate car buttons work on template-created pages).
 - Verified on car-demo: added page adopted Apex Motors header/footer + amber #d7a24b accent + Sora/Manrope.
+
+## 2026-07-19 (fork) — ivorydigital.uk prepped: editor-ready + performance + SEO (deliverable ZIP)
+User supplied their real Hostinger public_html.zip (22 pages). Preserve-&-enhance (no rebuild, nothing lost).
+Transform script /tmp/ivory_ph/transform.py (regex-only, NOT bs4 — avoids lowercasing SVG viewBox):
+- COMPATIBILITY: rewrote root-absolute ="/assets/" → relative ="assets/" on all 22 pages so the editor
+  canvas renders STYLED (base-href only rewrites relative). Publish output unaffected (root-relative works live).
+- EDITOR-FRIENDLY: added data-block to 122 repeating containers (card/step/plan divs + 10 <a class="card">
+  city cards on locations.html) → duplicate/delete whole card in the editor.
+- PERFORMANCE: loading="lazy" on all non-first images (20). Images already well-optimised (948KB total).
+- SEO: tightened 19 over-long meta descriptions (180–216ch) to ≤158ch, keywords+intent preserved; og/twitter
+  descriptions left untouched. City pages already had excellent schema (Service/BreadcrumbList/FAQPage/
+  areaServed/ProfessionalService) — no change needed. Added hyphenated llms-full.txt (publisher looks for hyphen).
+- VERIFIED: diff shows only intended changes; viewBox intact (7, 0 lowercase); rendered preview fully styled
+  (logo, gold accents, fonts, cards). All 22 pages valid (header+footer+</html>), 0 leftover root-absolute assets.
+- DELIVERABLE: /api/download/ivorydigital-editor-ready.zip (50 files, drop-in replacement for public_html).
+  NOTE: accent auto-detect won't fire (palette var is --gold #A78C46 not --accent) → set #A78C46 in Brand panel.
