@@ -1,0 +1,39 @@
+{
+  "summary": "Frontend UI verification of the 4 finalized car-demo editor features: (1) per-car Sold/Reserved/New-in status badges via StatusModal, (2) whole-car block reorder (◀ Move / Move ▶), (3) SOLD status visual styling (red badge + strikethrough price), (4) regression: text-edit focus, Publish modal. ALL 6 test items from the review request PASSED end-to-end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_results": {
+    "login_and_open_car_demo_home": "PASS — Logged in as admin@wifetobe.org, used data-testid='site-switcher' to switch to 'car-demo', clicked data-testid='page-home', editor iframe loaded with 2 <article class='car' data-block='car'> elements (Mercedes-Benz C-Class + Porsche 718 Cayman).",
+    "toolbar_shows_block_buttons_on_car_click": "PASS — Clicking a car heading (h3) inside the iframe reveals #ed-tb with exactly the expected buttons in this order: [↑ Up, ↓ Down, Duplicate, + Button, Delete, Duplicate car, Delete car, Status, ◀ Move, Move ▶]. The 5 gold ed-block-btn class buttons render correctly.",
+    "status_modal_opens_with_all_testids": "PASS — Clicking 'Status' toolbar button (via mousedown+click inside iframe) opens the StatusModal in parent DOM. Verified presence of data-testid='status-sold', 'status-reserved', 'status-new', 'status-clear' and title 'Car status badge'.",
+    "sold_badge_applies_visually": "PASS — Clicked data-testid='status-sold' → iframe reloaded, first car now has data-status='sold'. Visually a red 'SOLD' pill is rendered top-left of the car image (via CSS ::before content:\"Sold\") and the price shows strikethrough styling (£38,750 lined-through). Screenshot: /app/.screenshots/car_sold_visual.png.",
+    "clear_badge_removes_status": "PASS — Clicking 'Status' again then data-testid='status-clear' removed data-status attribute (value now null/empty) and the red SOLD pill is no longer rendered.",
+    "move_right_swaps_cars": "PASS — Initial order: ['2021 Mercedes-Benz C-Class', '2020 Porsche 718 Cayman']. Clicked 'Move ▶' on first car → order became ['2020 Porsche 718 Cayman', '2021 Mercedes-Benz C-Class']. Server op move-block-down persisted.",
+    "reorder_persists_on_reload": "PASS — After page.reload() the swapped order (Porsche first, Mercedes second) was still shown in the iframe, confirming persistence to Mongo via /api/pages/car-demo/elementor-builder-4/op.",
+    "move_back_restores_order": "PASS — Clicking 'Move ▶' on the (now-first) Porsche restored the original order ['Mercedes', 'Porsche'] — bi-directional move works, cleanup successful.",
+    "text_edit_regression": "PASS — [contenteditable] elements in the iframe still receive focus programmatically; visually the H1 'Hand-picked used cars, honestly priced.' shows the dashed gold 'ed-sel' outline when selected earlier in the run.",
+    "publish_modal_regression": "PASS — Clicking data-testid='publish-btn' opened the 'Publish to Hostinger' modal with expected copy: \"SFTP isn't set up yet, so this will only render your site and save a backup — nothing is pushed live. Add your SFTP details in Admin settings to go live.\" and Cancel / Render & back up buttons (SFTP-not-configured message is expected in preview and NOT a bug per review note)."
+  },
+  "evidence_screenshots": [
+    "/app/.screenshots/car_demo_editor.png (editor loaded, 2 cars, toolbar visible with Duplicate car / Delete car / Status / ◀ Move / Move ▶ over first car)",
+    "/app/.screenshots/car_sold_visual.png (red 'SOLD' pill on Porsche card + £38,750 strikethrough after SOLD applied post-swap)"
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "None blocking. All 6 requested behaviors work end-to-end. Consider (nit) adding data-testid to the 5 block toolbar buttons ('Duplicate car','Delete car','Status','◀ Move','Move ▶') inside the injected EDITOR_INJECT script for even more robust automated testing — currently they are matched by innerText which works but is locale-fragile."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py EDITOR_INJECT: the toolbar buttons are correctly conditional on tag.closest('[data-block]'). ed-block-btn class provides visual distinction (gold) which matches spec. Good.",
+    "The move-block ops use dom sibling swap on the server and return nonce++ triggering iframe reload — snappy UX (~2-3s per op observed).",
+    "StatusModal (App.js:723) uses data-testid on all 4 status buttons — testable. Modal is rendered in the parent DOM (correct; iframe posts message d.t==='status' -> setStatusEdit).",
+    "Minor: When StatusModal is opened, closing via ESC or backdrop click was not tested but not in scope."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested this iteration (backend ops pre-verified via curl per review note)", "frontend": "100% (all 6 review items PASS)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (used, worked).",
+  "seed_data_creation": "During testing the car-demo home page briefly had (a) first car data-status='sold' — cleared before finishing, and (b) car order swapped Mercedes<->Porsche — restored to original Mercedes-then-Porsche at the end of the run. Final state of car-demo/home matches the pre-test state. No cleanup required.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "For car-demo editor tests: switch via data-testid='site-switcher' select value='car-demo'; click data-testid='page-home'. Iframe is data-testid='page-frame'. Reliable pattern to reveal the toolbar for a car: fr.evaluate on document.querySelectorAll('[data-block=\"car\"]')[idx] → find h3 (car title) → scrollIntoView + dispatch mousedown + click. Toolbar #ed-tb block buttons have NO data-testid; match by innerText.trim() ('Status','◀ Move','Move ▶','Duplicate car','Delete car'). Then dispatch mousedown+click. StatusModal buttons in PARENT DOM have data-testid (status-sold/reserved/new/clear). SOLD badge is rendered via CSS ::before content:'Sold' on [data-status='sold'] — check via getComputedStyle(car,'::before').content, NOT innerHTML.",
+  "rca of the issue": "N/A — no bugs found this iteration. Status badge + block reorder features work as designed."
+}

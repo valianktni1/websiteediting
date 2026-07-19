@@ -171,3 +171,25 @@ img{display:block;max-width:100%}
   .cta-inner{flex-direction:column;align-items:flex-start}
   .hero-stats{gap:22px}
 }
+
+/* ---- status badge (Sold / Reserved / New in) ---- */
+.car{position:relative}
+.car[data-status]::before{position:absolute;top:14px;left:14px;z-index:6;padding:6px 13px;border-radius:8px;font-family:'Space Grotesk','Sora',sans-serif;font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:#fff;box-shadow:0 8px 20px -8px rgba(0,0,0,.55)}
+.car[data-status="sold"]::before{content:"Sold";background:#d12b2b}
+.car[data-status="reserved"]::before{content:"Reserved";background:#E85D00}
+.car[data-status="new"]::before{content:"New in";background:#1f9d55}
+.car[data-status="sold"] .slider{opacity:.5;filter:grayscale(.45)}
+.car[data-status="sold"] .price{color:#9aa1ac;text-decoration:line-through}
+
+/* ---- enquiry modal ---- */
+.enq-overlay{position:fixed;inset:0;background:rgba(8,9,11,.72);display:none;align-items:center;justify-content:center;z-index:200;padding:20px}
+.enq-overlay.on{display:flex}
+.enq-modal{background:#fff;color:#14181e;border-radius:16px;max-width:440px;width:100%;padding:28px;position:relative;box-shadow:0 30px 80px -30px rgba(0,0,0,.6);font-family:inherit}
+.enq-close{position:absolute;top:12px;right:16px;background:none;border:none;font-size:1.8rem;line-height:1;color:#8a8f98;cursor:pointer}
+.enq-title{font-family:'Space Grotesk','Sora',sans-serif;font-size:1.3rem;margin:0 0 4px}
+.enq-car{color:var(--accent);font-weight:600;font-size:.9rem;margin:0 0 16px}
+.enq-form{display:flex;flex-direction:column;gap:12px}
+.enq-form label{display:flex;flex-direction:column;font-size:.72rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#616873;gap:5px}
+.enq-form input,.enq-form textarea{font-family:inherit;font-size:.95rem;color:#14181e;border:1px solid #e6e8ec;border-radius:9px;padding:10px 12px}
+.enq-form input:focus,.enq-form textarea:focus{outline:none;border-color:var(--accent)}
+.enq-send{margin-top:6px;width:100%}
