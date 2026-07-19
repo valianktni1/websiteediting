@@ -888,6 +888,17 @@ async def asset(slug_site: str, path: str):
     if os.path.isfile(fp): return FileResponse(fp)
     raise HTTPException(404,"Asset not found")
 
+DOWNLOADS_DIR = os.environ.get("DOWNLOADS_DIR", "/app/frontend/public/downloads")
+
+@api.get("/download/{name}")
+async def download_zip(name: str):
+    safe = os.path.basename(name)
+    fp = os.path.join(DOWNLOADS_DIR, safe)
+    if not os.path.isfile(fp):
+        raise HTTPException(404, "File not found")
+    return FileResponse(fp, media_type="application/zip", filename=safe)
+
+
 @api.post("/media/{slug_site}/upload")
 async def upload_media(slug_site: str, file: UploadFile = File(...), u=Depends(current_user)):
     d = os.path.join(MEDIA_DIR, slug_site); os.makedirs(d, exist_ok=True)
