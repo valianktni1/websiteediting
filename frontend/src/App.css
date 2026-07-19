@@ -135,3 +135,11 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 /* alt text */
 .alt-text{ width:100%; background:#0f1216; border:1px solid var(--line); border-radius:8px; color:#e9ecf1; padding:10px 12px; font-size:.9rem; resize:vertical; font-family:inherit; margin-bottom:12px; }
 .alt-text:focus{ outline:none; border-color:var(--gold); }
+
+/* status badge picker */
+.status-choices{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+.status-choices .btn{ font-weight:800; letter-spacing:.06em; color:#fff; border:none; }
+.status-choices .status-sold{ background:#d12b2b; }
+.status-choices .status-reserved{ background:#E85D00; }
+.status-choices .status-new{ background:#1f9d55; }
+.status-choices .btn:hover{ filter:brightness(1.12); }

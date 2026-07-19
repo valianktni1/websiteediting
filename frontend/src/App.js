@@ -720,6 +720,26 @@ function AltModal({ site, page, eid, initial, onClose, onSaved, flash }) {
   );
 }
 
+function StatusModal({ site, page, eid, onClose, onDone, flash }) {
+  const [busy, setBusy] = useState(false);
+  const set = async (op, label) => {
+    setBusy(true);
+    try { await axios.post(`${API}/pages/${site}/${page}/op`, { op, eid }); flash(label); onDone(); }
+    catch (e) { flash("Could not update status"); setBusy(false); }
+  };
+  return (
+    <Modal title="Car status badge" onClose={onClose}>
+      <p className="hint">Show a badge on this car. Use "Sold" to keep a car on the page (with its photos) but clearly mark it as gone.</p>
+      <div className="status-choices">
+        <button className="btn status-sold" data-testid="status-sold" disabled={busy} onClick={() => set("status-sold", "Marked as Sold")}>SOLD</button>
+        <button className="btn status-reserved" data-testid="status-reserved" disabled={busy} onClick={() => set("status-reserved", "Marked as Reserved")}>RESERVED</button>
+        <button className="btn status-new" data-testid="status-new" disabled={busy} onClick={() => set("status-new", "Marked as New in")}>NEW IN</button>
+      </div>
+      <button className="btn" style={{ marginTop: 12, width: "100%" }} data-testid="status-clear" disabled={busy} onClick={() => set("status-clear", "Badge cleared")}>Clear badge</button>
+    </Modal>
+  );
+}
+
 function Editor({ site, page, onBack, flash }) {
   const iframeRef = useRef(null);
   const fileRef = useRef(null);
@@ -733,6 +753,7 @@ function Editor({ site, page, onBack, flash }) {
   const [showPublish, setShowPublish] = useState(false);
   const [cropState, setCropState] = useState(null);
   const [altEdit, setAltEdit] = useState(null);
+  const [statusEdit, setStatusEdit] = useState(null);
   const [fillingAlt, setFillingAlt] = useState(false);
 
   useEffect(() => {
@@ -785,6 +806,8 @@ function Editor({ site, page, onBack, flash }) {
       bulkFileRef.current?.click();
     } else if (d.t === "alt") {
       setAltEdit({ eid: d.eid, alt: d.alt || "" });
+    } else if (d.t === "status") {
+      setStatusEdit({ eid: d.eid });
     } else if (d.t === "caption") {
       const cap = window.prompt("Caption shown under this photo (leave blank to show no caption):", d.caption || "");
       if (cap !== null) {
@@ -805,7 +828,7 @@ function Editor({ site, page, onBack, flash }) {
       try {
         await axios.post(`${API}/pages/${site}/${page}/op`, { op: d.op, eid: d.eid, ref: d.ref });
         setDirty(true); setCanUndo(true);
-        const msg = { "delete": "Deleted", "add-button": "Button added", "add-image": "Image added — click it to replace", "move-up": "Moved up", "move-down": "Moved down", "swap-image": "Photos reordered", "duplicate-block": "Card duplicated", "delete-block": "Card removed" }[d.op] || "Duplicated";
+        const msg = { "delete": "Deleted", "add-button": "Button added", "add-image": "Image added — click it to replace", "move-up": "Moved up", "move-down": "Moved down", "swap-image": "Photos reordered", "duplicate-block": "Card duplicated", "delete-block": "Card removed", "move-block-up": "Card moved", "move-block-down": "Card moved" }[d.op] || "Duplicated";
         flash(msg);
         setNonce(n => n + 1); // reload iframe to reflect structural change
       } catch (e) { flash(e.response?.data?.detail || "Could not apply change"); }
@@ -915,6 +938,8 @@ function Editor({ site, page, onBack, flash }) {
       {cropState && <CropModal file={cropState.file} aspect={cropState.aspect} onCancel={() => setCropState(null)} onDone={finishCrop} />}
       {altEdit && <AltModal site={site} page={page} eid={altEdit.eid} initial={altEdit.alt} flash={flash}
         onClose={() => setAltEdit(null)} onSaved={() => { setAltEdit(null); setDirty(true); setCanUndo(true); setNonce(n => n + 1); }} />}
+      {statusEdit && <StatusModal site={site} page={page} eid={statusEdit.eid} flash={flash}
+        onClose={() => setStatusEdit(null)} onDone={() => { setStatusEdit(null); setDirty(true); setCanUndo(true); setNonce(n => n + 1); }} />}
     </div>
   );
 }

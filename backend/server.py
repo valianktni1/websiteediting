@@ -417,7 +417,10 @@ document.addEventListener('DOMContentLoaded',function(){
       var bn = blk.getAttribute('data-block'); bn = (bn && bn.trim()) ? bn.trim() : 'block';
       var b1=mk('Duplicate '+bn,function(){post({t:'op',op:'duplicate-block',eid:eid});}); b1.className='ed-block-btn';
       var b2=mk('Delete '+bn,function(){post({t:'op',op:'delete-block',eid:eid});}); b2.className='ed-block-btn';
-      tb.appendChild(b1); tb.appendChild(b2);
+      var b3=mk('Status',function(){post({t:'status',eid:eid});}); b3.className='ed-block-btn';
+      var b4=mk('\u25C0 Move',function(){post({t:'op',op:'move-block-up',eid:eid});}); b4.className='ed-block-btn';
+      var b5=mk('Move \u25B6',function(){post({t:'op',op:'move-block-down',eid:eid});}); b5.className='ed-block-btn';
+      tb.appendChild(b1); tb.appendChild(b2); tb.appendChild(b3); tb.appendChild(b4); tb.appendChild(b5);
     }
     tb.style.display='flex';
     place(el);
@@ -648,7 +651,7 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
-    if body.op not in ("duplicate","delete","add-image","add-button","move-up","move-down","swap-image","duplicate-block","delete-block"):
+    if body.op not in ("duplicate","delete","add-image","add-button","move-up","move-down","swap-image","duplicate-block","delete-block","move-block-up","move-block-down","status-sold","status-reserved","status-new","status-clear"):
         raise HTTPException(400,"Unknown operation")
     if body.op == "swap-image":
         r1 = p.get("regions",{}).get(body.eid); r2 = p.get("regions",{}).get(body.ref or "")
@@ -703,6 +706,23 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
             block.insert_after(_c.copy(block))
         else:
             block.decompose()
+    elif body.op in ("move-block-up","move-block-down"):
+        block = target.find_parent(attrs={"data-block": True})
+        if not block:
+            raise HTTPException(400,"This element isn't inside a movable card.")
+        if body.op=="move-block-up":
+            sib = block.find_previous_sibling()
+            if sib: sib.insert_before(block.extract())
+        else:
+            sib = block.find_next_sibling()
+            if sib: sib.insert_after(block.extract())
+    elif body.op in ("status-sold","status-reserved","status-new","status-clear"):
+        block = target.find_parent(attrs={"data-block": True})
+        if not block:
+            raise HTTPException(400,"This element isn't inside a card.")
+        st = {"status-sold":"sold","status-reserved":"reserved","status-new":"new"}.get(body.op)
+        if st: block["data-status"] = st
+        elif block.has_attr("data-status"): del block["data-status"]
     regions = assign_regions(bodyel)
     await db.pages.update_one({"_id":p["_id"]},{"$set":{"template":str(bodyel),"regions":regions}})
     return {"ok":True}
