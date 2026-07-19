@@ -362,3 +362,25 @@ BACKLOG: Finance Calculator (P2, user postponed); modularize server.py + App.js 
   fresh files. Rebuilt both download ZIPs. User needs to re-upload car-sales/index.html (assets unchanged).
 - NOTE: car-demo DB copy in the CMS was NOT re-ingested (keeps clean no-query asset paths for the editor
   preview, which serves assets via /api/asset/). Only the deliverable HTML carries ?v=.
+
+## 2026-07-19 (fork) — Page Templates library + brand-adaptive "Add page from template"
+Superadmin can add reusable page designs to any site; the added page adopts the site's own header/footer
+and auto-adapts to its brand colours + fonts. Verified 100% (8/8) frontend E2E in iteration_13.json;
+backend curl-verified + rendered-preview screenshot.
+- BRAND TOKENS: sites.branding extended with accent, accent_dark, on_accent, heading_font, body_font,
+  font_link. Auto-extracted on ingest (extract_brand/autofill_brand: scans site CSS for --accent/--primary/
+  etc. + Google-Fonts <link> families; fills blanks only, never overwrites). Editable in Admin > Branding
+  (colour pickers + font fields). GET/PUT /api/sites/{slug}/branding now include tokens.
+- TEMPLATE LIBRARY: new `templates` collection. Built-in seeded on startup (idempotent by key). CRUD:
+  GET /api/templates (admin), POST /api/templates (super, paste name+HTML+CSS+JS), DELETE (super, builtin
+  protected). Admin > Templates tab (list + add-your-own + delete; built-ins show a badge, no delete).
+- ADD FROM TEMPLATE: POST /api/pages/{site}/from-template {template_id, slug, title, enquiry_email}.
+  Composes: site Home <header> + <main>{template.sections_html}</main> + site <footer> (_chrome_from_home);
+  head_assets = Home head_assets + injected :root {--brand-accent/-dark/-heading/-body} (_brand_root_style)
+  + template CSS <style> + template JS <script>; strips stale data-eid/data-caption then assign_regions.
+  Frontend AddPageModal has a blank/template segmented toggle; enquiry-email field shows only for car template.
+- SEED TEMPLATE (/app/backend/templates_seed.py): "Used Cars / Stock page" — NAMESPACED 'uc-' classes (no
+  collision with host site CSS) + TOKENISED var(--brand-accent)/var(--brand-heading) so it takes on the
+  site palette; hero + 2 data-block='car' cards (sliders, Sold/Reserved badges, per-car enquiry) + why + CTA.
+  Fully editable in the CMS (Status/Move/Duplicate car buttons work on template-created pages).
+- Verified on car-demo: added page adopted Apex Motors header/footer + amber #d7a24b accent + Sora/Manrope.
