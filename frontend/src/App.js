@@ -112,25 +112,61 @@ function Modal({ title, onClose, children, wide }) {
 function AddPageModal({ site, onClose, onDone, flash }) {
   const [title, setTitle] = useState(""); const [slug, setSlug] = useState("");
   const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState("blank");
+  const [templates, setTemplates] = useState([]);
+  const [templateId, setTemplateId] = useState("");
+  const [enquiryEmail, setEnquiryEmail] = useState("");
+  useEffect(() => {
+    axios.get(`${API}/templates`).then(r => { setTemplates(r.data); if (r.data[0]) setTemplateId(r.data[0].id); }).catch(() => {});
+  }, []);
   const slugFromTitle = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const submit = async () => {
     setErr(""); setBusy(true);
     try {
       const finalSlug = (slug || slugFromTitle(title));
-      await axios.post(`${API}/pages/${site}`, { slug: finalSlug, title });
+      if (mode === "template") {
+        if (!templateId) { setErr("Pick a template"); setBusy(false); return; }
+        await axios.post(`${API}/pages/${site}/from-template`, { template_id: templateId, slug: finalSlug, title, enquiry_email: enquiryEmail });
+      } else {
+        await axios.post(`${API}/pages/${site}`, { slug: finalSlug, title });
+      }
       flash("Page created"); onDone();
     } catch (e) { setErr(e.response?.data?.detail || "Could not create page"); }
     finally { setBusy(false); }
   };
+  const isUsedCars = mode === "template" && templates.find(t => t.id === templateId)?.name?.toLowerCase().includes("car");
   return (
     <Modal title="Add a new page" onClose={onClose}>
-      <p className="hint">A new page is created as a copy of your Home page so it already has your header, footer and styling — just edit the content.</p>
+      <div className="seg" data-testid="addpage-mode">
+        <button className={`seg-btn ${mode === "blank" ? "on" : ""}`} data-testid="mode-blank" onClick={() => setMode("blank")}>Copy of Home</button>
+        <button className={`seg-btn ${mode === "template" ? "on" : ""}`} data-testid="mode-template" onClick={() => setMode("template")}>From a template</button>
+      </div>
+      {mode === "blank" ? (
+        <p className="hint">A new page is created as a copy of your Home page so it already has your header, footer and styling — just edit the content.</p>
+      ) : (
+        <p className="hint">A ready-made page design. It automatically takes on this site's header, footer, colours and fonts.</p>
+      )}
+      {mode === "template" && (
+        <>
+          <label>Template</label>
+          <select data-testid="addpage-template" value={templateId} onChange={e => setTemplateId(e.target.value)}>
+            {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          {templateId && <div className="hint" style={{ marginTop: 4 }}>{templates.find(t => t.id === templateId)?.description}</div>}
+          {isUsedCars && (
+            <>
+              <label>Enquiry email (where car enquiries are sent)</label>
+              <input data-testid="addpage-enquiry-email" value={enquiryEmail} placeholder="sales@yourgarage.co.uk" onChange={e => setEnquiryEmail(e.target.value)} />
+            </>
+          )}
+        </>
+      )}
       <label>Page title</label>
-      <input data-testid="addpage-title" value={title} placeholder="e.g. Our Services"
+      <input data-testid="addpage-title" value={title} placeholder="e.g. Used Cars"
         onChange={e => { setTitle(e.target.value); setSlug(slugFromTitle(e.target.value)); }} />
       <label>Page URL</label>
       <div className="slug-row"><span>/</span>
-        <input data-testid="addpage-slug" value={slug} placeholder="our-services"
+        <input data-testid="addpage-slug" value={slug} placeholder="used-cars"
           onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} />
         <span>/</span>
       </div>
@@ -207,7 +243,7 @@ function VersionHistory({ site, onClose, flash, onRestored }) {
   );
 }
 
-function AdminSettings({ onClose, flash, onSitesChanged }) {
+function AdminSettings({ onClose, flash, onSitesChanged, user }) {
   const [tab, setTab] = useState("users");
   return (
     <Modal title="Admin settings" onClose={onClose} wide>
@@ -216,19 +252,74 @@ function AdminSettings({ onClose, flash, onSitesChanged }) {
         <button className={`tab ${tab === "sftp" ? "on" : ""}`} data-testid="tab-sftp" onClick={() => setTab("sftp")}>Hostinger SFTP</button>
         <button className={`tab ${tab === "sites" ? "on" : ""}`} data-testid="tab-sites" onClick={() => setTab("sites")}>Sites</button>
         <button className={`tab ${tab === "branding" ? "on" : ""}`} data-testid="tab-branding" onClick={() => setTab("branding")}>Branding</button>
+        <button className={`tab ${tab === "templates" ? "on" : ""}`} data-testid="tab-templates" onClick={() => setTab("templates")}>Templates</button>
       </div>
       {tab === "users" && <UsersTab flash={flash} />}
       {tab === "sftp" && <SftpTab flash={flash} />}
       {tab === "sites" && <SitesTab flash={flash} onSitesChanged={onSitesChanged} />}
       {tab === "branding" && <BrandingTab flash={flash} />}
+      {tab === "templates" && <TemplatesTab flash={flash} user={user} />}
     </Modal>
+  );
+}
+
+function TemplatesTab({ flash, user }) {
+  const [list, setList] = useState([]);
+  const [adding, setAdding] = useState(false);
+  const [f, setF] = useState({ name: "", description: "", sections_html: "", css: "", js: "" });
+  const isSuper = user?.role === "superadmin";
+  const load = () => axios.get(`${API}/templates`).then(r => setList(r.data));
+  useEffect(() => { load(); }, []);
+  const save = async () => {
+    if (!f.name.trim() || !f.sections_html.trim()) { flash("Name and HTML are required"); return; }
+    await axios.post(`${API}/templates`, f);
+    setF({ name: "", description: "", sections_html: "", css: "", js: "" });
+    setAdding(false); flash("Template added"); load();
+  };
+  const del = async (id) => {
+    if (!window.confirm("Delete this template?")) return;
+    try { await axios.delete(`${API}/templates/${id}`); flash("Template deleted"); load(); }
+    catch (e) { flash(e.response?.data?.detail || "Could not delete"); }
+  };
+  return (
+    <div className="admin-form" data-testid="templates-tab">
+      <p className="hint">Reusable page designs you can add to any site. When added, a template adopts that site's header, footer, colours and fonts automatically.</p>
+      {list.map(t => (
+        <div key={t.id} className="tmpl-row" data-testid={`template-${t.id}`}>
+          <div>
+            <div className="tmpl-name">{t.name}{t.builtin && <span className="tmpl-badge">built-in</span>}</div>
+            <div className="admin-meta">{t.description}</div>
+          </div>
+          {isSuper && !t.builtin && <button className="btn danger" data-testid={`del-template-${t.id}`} onClick={() => del(t.id)}>Remove</button>}
+        </div>
+      ))}
+      {isSuper && !adding && <button className="btn" data-testid="add-template-btn" style={{ marginTop: 12 }} onClick={() => setAdding(true)}>+ Add a template</button>}
+      {isSuper && adding && (
+        <div className="tmpl-add">
+          <label>Template name</label>
+          <input data-testid="tmpl-name" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="e.g. Contact page" />
+          <label>Short description</label>
+          <input data-testid="tmpl-desc" value={f.description} onChange={e => setF({ ...f, description: e.target.value })} placeholder="What this page is for" />
+          <label>Sections HTML (the body content — no header/footer)</label>
+          <textarea data-testid="tmpl-html" rows={6} value={f.sections_html} onChange={e => setF({ ...f, sections_html: e.target.value })} placeholder="<section>…</section>" />
+          <label>Component CSS (optional — use var(--brand-accent) so it adapts)</label>
+          <textarea data-testid="tmpl-css" rows={4} value={f.css} onChange={e => setF({ ...f, css: e.target.value })} />
+          <label>Component JS (optional)</label>
+          <textarea data-testid="tmpl-js" rows={3} value={f.js} onChange={e => setF({ ...f, js: e.target.value })} />
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => setAdding(false)}>Cancel</button>
+            <button className="btn primary" data-testid="tmpl-save" onClick={save}>Save template</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
 function BrandingTab({ flash }) {
   const [sites, setSites] = useState([]);
   const [slug, setSlug] = useState("");
-  const [f, setF] = useState({ brand_name: "", logo_url: "", subdomain: "" });
+  const [f, setF] = useState({ brand_name: "", logo_url: "", subdomain: "", accent: "", accent_dark: "", on_accent: "", heading_font: "", body_font: "", font_link: "" });
   const fileRef = useRef(null);
   useEffect(() => { axios.get(`${API}/sites`).then(r => { setSites(r.data); if (r.data[0]) setSlug(r.data[0].slug); }); }, []);
   useEffect(() => { if (!slug) return; axios.get(`${API}/sites/${slug}/branding`).then(r => setF(r.data)); }, [slug]);
@@ -256,6 +347,36 @@ function BrandingTab({ flash }) {
       {logoSrc && <img className="brand-logo-preview" data-testid="brand-logo-preview" src={logoSrc} alt="logo preview" />}
       <button className="btn" data-testid="brand-logo-upload" onClick={() => fileRef.current?.click()}>{f.logo_url ? "Replace logo" : "Upload logo"}</button>
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onLogo} />
+      <div className="brand-tokens">
+        <p className="hint" style={{ marginTop: 16 }}>Colour scheme &amp; fonts — page templates you add to this site adopt these. Auto-filled from the site on import; tweak if needed.</p>
+        <div className="brand-token-grid">
+          <div>
+            <label>Accent colour</label>
+            <div className="colour-row">
+              <input type="color" data-testid="brand-accent-color" value={f.accent || "#d7a24b"} onChange={e => setF({ ...f, accent: e.target.value })} />
+              <input data-testid="brand-accent-hex" value={f.accent} placeholder="#d7a24b" onChange={e => setF({ ...f, accent: e.target.value })} />
+            </div>
+          </div>
+          <div>
+            <label>Accent (dark/hover)</label>
+            <div className="colour-row">
+              <input type="color" data-testid="brand-accent-dark-color" value={f.accent_dark || "#b8863a"} onChange={e => setF({ ...f, accent_dark: e.target.value })} />
+              <input data-testid="brand-accent-dark-hex" value={f.accent_dark} placeholder="#b8863a" onChange={e => setF({ ...f, accent_dark: e.target.value })} />
+            </div>
+          </div>
+          <div>
+            <label>Text on accent</label>
+            <div className="colour-row">
+              <input type="color" data-testid="brand-on-accent-color" value={f.on_accent || "#1a1205"} onChange={e => setF({ ...f, on_accent: e.target.value })} />
+              <input data-testid="brand-on-accent-hex" value={f.on_accent} placeholder="#1a1205" onChange={e => setF({ ...f, on_accent: e.target.value })} />
+            </div>
+          </div>
+        </div>
+        <label>Heading font</label>
+        <input data-testid="brand-heading-font" value={f.heading_font} placeholder="Sora" onChange={e => setF({ ...f, heading_font: e.target.value })} />
+        <label>Body font</label>
+        <input data-testid="brand-body-font" value={f.body_font} placeholder="Manrope" onChange={e => setF({ ...f, body_font: e.target.value })} />
+      </div>
       <button className="btn primary" data-testid="brand-save" style={{ marginTop: 12 }} disabled={!slug} onClick={save}>Save branding</button>
     </div>
   );
@@ -647,7 +768,7 @@ function Dashboard() {
       </div>
       {modal === "addpage" && site && <AddPageModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => { setModal(null); loadSites(site.slug); }} />}
       {modal === "versions" && site && <VersionHistory site={site.slug} flash={flash} onClose={() => setModal(null)} onRestored={() => loadSites(site.slug)} />}
-      {modal === "admin" && <AdminSettings flash={flash} onClose={() => setModal(null)} onSitesChanged={() => loadSites()} />}
+      {modal === "admin" && <AdminSettings user={user} flash={flash} onClose={() => setModal(null)} onSitesChanged={() => loadSites()} />}
       {modal === "publish" && site && <PublishConfirm site={site.slug} flash={flash} onClose={() => setModal(null)} />}
       {toast && <div className="toast" data-testid="toast">{toast}</div>}
       <Footer />

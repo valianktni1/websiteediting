@@ -103,6 +103,27 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .admin-form{ border-top:1px solid var(--line); padding-top:16px; }
 .admin-form h4{ font-size:.95rem; margin-bottom:6px; }
 .admin-form .btn.primary{ margin-top:16px; }
+
+/* segmented toggle (add-page mode) */
+.seg{ display:inline-flex; background:#0f1216; border:1px solid var(--line); border-radius:9px; padding:3px; gap:3px; margin-bottom:12px; }
+.seg-btn{ background:none; border:none; color:var(--muted); padding:7px 16px; border-radius:7px; cursor:pointer; font-family:inherit; font-size:.85rem; }
+.seg-btn.on{ background:var(--gold); color:#161616; font-weight:600; }
+
+/* brand tokens */
+.brand-token-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:8px; }
+.brand-token-grid label{ display:block; font-size:.76rem; color:var(--muted); margin-bottom:5px; }
+.colour-row{ display:flex; align-items:center; gap:8px; }
+.colour-row input[type="color"]{ width:38px; height:36px; padding:0; border:1px solid var(--line); border-radius:8px; background:none; cursor:pointer; flex:0 0 auto; }
+.colour-row input:not([type="color"]){ flex:1; min-width:0; font-family:monospace; }
+.brand-tokens{ border-top:1px solid var(--line); margin-top:14px; padding-top:6px; }
+
+/* templates tab */
+.tmpl-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; background:#0f1216; border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:8px; }
+.tmpl-name{ font-size:.95rem; color:#e9ecf1; display:flex; align-items:center; gap:8px; }
+.tmpl-badge{ font-size:.6rem; text-transform:uppercase; letter-spacing:.06em; padding:2px 7px; border-radius:20px; background:rgba(167,140,70,.18); color:var(--gold); border:1px solid var(--gold); }
+.tmpl-add{ border-top:1px solid var(--line); margin-top:14px; padding-top:12px; }
+.tmpl-add textarea{ width:100%; font-family:monospace; font-size:.8rem; }
+
 .btn.danger{ border-color:#5a3232; color:#ff8a8a; }
 .btn.danger:hover{ border-color:#ff8a8a; }
 .sftp-btns{ display:flex; gap:10px; margin-top:18px; }

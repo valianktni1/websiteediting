@@ -1,0 +1,38 @@
+{
+  "summary": "Frontend end-to-end verification of the NEW page-templates feature on car-demo. All 8 review items PASSED. Templates tab lists the built-in 'Used Cars / Stock page' with BUILT-IN badge and no delete; Branding tab auto-fills #d7a24b / Sora / Manrope for car-demo and persists edits; AddPageModal has mode-blank/mode-template segmented toggle; template mode reveals addpage-template dropdown + addpage-enquiry-email; creating the used-cars page renders in the editor WITH the Apex Motors header + footer, --brand-accent:#d7a24b in :root, Sora/Manrope fonts, 2 data-block='car' cards, and the amber accent on eyebrow/button (NOT purple/blue); clicking a car block reveals the full editor toolbar (Duplicate car / Delete car / Status / ◀ Move / Move ▶); superadmin can add & remove a custom template via add-template-btn / tmpl-name / tmpl-html / tmpl-save / del-template-<id>; Copy-of-Home blank regression still works. All test data cleaned up.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_results": {
+    "templates_tab_lists_builtin": "PASS — Admin settings > tab-templates shows 'Used Cars / Stock page' with 'BUILT-IN' badge. delBtns=[] (built-in has NO remove button). add-template-btn present.",
+    "branding_car_demo_tokens": "PASS — brand-site='car-demo' → brand-accent-hex='#d7a24b', brand-heading-font='Sora', brand-body-font='Manrope'. Editing heading-font to 'Sora Test' + brand-save persisted (re-open shows 'Sora Test'). Restored to 'Sora'.",
+    "addpage_modal_template_mode": "PASS — mode-blank/mode-template segmented toggle present. Blank mode: only title+slug shown. Template mode: addpage-template dropdown lists 'Used Cars / Stock page' (value='used-cars') AND addpage-enquiry-email input appears (placeholder sales@yourgarage.co.uk).",
+    "create_used_cars_page": "PASS — Selected template used-cars, set enquiry=sales@apexmotors.co.uk, title='Used Cars', slug auto-filled 'used-cars', addpage-submit → page-used-cars card appears on car-demo dashboard.",
+    "editor_adopts_site_chrome_and_brand": "PASS — /used-cars/ iframe renders: Apex Motors header (nav: Our stock / Why us / Finance / Contact / 01234 567 890), Apex Motors footer. Root style contains '--brand-accent:#d7a24b'. Computed --brand-heading='Sora,sans-serif', --brand-body='Manrope,sans-serif'. 2 car cards (2021 Mercedes-Benz C-Class + 2020 Porsche 718 Cayman). Screenshot 9_editor_used_cars.png confirms amber accent on 'AVAILABLE NOW' eyebrow + 'View our stock' button (NOT generic purple/blue).",
+    "toolbar_buttons_on_car_block": "PASS — Clicking h3 of first data-block='car' reveals #ed-tb with buttons: ['↑ Up','↓ Down','Duplicate','+ Button','Delete','Duplicate car','Delete car','Status','◀ Move','Move ▶'] — identical to home-page car toolbar.",
+    "add_and_delete_custom_template": "PASS — add-template-btn → tmpl-name='TEST_Custom_Template' + tmpl-html='<section>...</section>' + tmpl-save → template appears with del-template-84be8afa... button. Click del + confirm dialog → template removed. Built-in template still has NO del button after custom deletion.",
+    "regression_copy_of_home_blank": "PASS — mode-blank + title 'TEST Copy Blank' → slug auto-derived 'test-copy-blank' → addpage-submit → POST /api/pages/car-demo returned 200 → page-test-copy-blank card appears. Deleted for cleanup."
+  },
+  "evidence_screenshots": [
+    "/app/.screenshots/4_templates_tab.png (Templates tab with built-in Used Cars, BUILT-IN badge, + Add a template)",
+    "/app/.screenshots/5_branding_tab.png (Branding tab, accent #d7a24b, Sora + Manrope for car-demo)",
+    "/app/.screenshots/7_addpage_template.png (AddPageModal template mode with dropdown + enquiry email + auto-slug)",
+    "/app/.screenshots/9_editor_used_cars.png (Editor shows Apex Motors header/footer + amber accent + hero + View our stock button)"
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Frontend correctly conditionally renders addpage-enquiry-email only when selected template is the used-cars (car) template — good UX.",
+    "TemplatesTab correctly hides delete button for built-in templates (kind==='builtin') — confirmed no del-template-* for the seeded row.",
+    "Branding tab correctly loads per-site tokens via brand-site select and persists via brand-save (verified POST/GET roundtrip).",
+    "The from-template composition on backend correctly injects site header/footer + --brand-accent:#d7a24b in :root style so template CSS var(--brand-accent) resolves to the site amber — verified in the rendered iframe.",
+    "Minor (nit, not blocking): consider adding a subtle loading state on addpage-submit for the from-template flow (~2-3s compose time)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per review; backend already curl-verified)", "frontend": "100% (8/8 review items PASS)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (superadmin) — worked.",
+  "seed_data_creation": "During testing: created page 'Used Cars' (slug used-cars) on car-demo, custom template 'TEST_Custom_Template', page 'TEST Copy Blank'. Also briefly changed car-demo brand heading-font to 'Sora Test'. ALL cleaned up at end — car-demo final state: 1 page (page-home/Used Cars for Sale), only built-in template in Templates list, brand heading-font restored to 'Sora'. Verified via final dashboard screenshot 13_cleanup_final.png.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Login uses placeholder inputs (get_by_placeholder('Email')/('Password')) and role=button name='Sign in'. Site switch via [data-testid='site-switcher']. Admin settings tabs: tab-users/tab-sftp/tab-sites/tab-branding/tab-templates. Branding tab has its own [data-testid='brand-site'] site select — must select car-demo AFTER opening branding tab even if dashboard already on car-demo. AddPageModal testids: mode-blank, mode-template, addpage-template, addpage-enquiry-email, addpage-title, addpage-slug, addpage-submit. Slug auto-derives from title on blur/change. Page cards use page-<slug>; delete buttons use del-page-<slug> (title='Delete page'). Templates: add-template-btn, tmpl-name, tmpl-html, tmpl-save, del-template-<id>. Confirm dialogs use window.confirm — handle with page.on('dialog', lambda d: d.accept()).",
+  "rca of the issue": "N/A — no bugs found."
+}

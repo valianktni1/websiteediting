@@ -5,6 +5,7 @@ import os, io, re, json, shutil, zipfile, glob, socket, asyncio, logging, uuid
 import base64, mimetypes, urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from templates_seed import BUILTIN_TEMPLATES
 
 import bcrypt, jwt
 from bson import ObjectId
@@ -167,6 +168,25 @@ class Branding(BaseModel):
     brand_name: str = ""
     logo_url: str = ""
     subdomain: str = ""
+    accent: str = ""
+    accent_dark: str = ""
+    on_accent: str = ""
+    heading_font: str = ""
+    body_font: str = ""
+    font_link: str = ""
+
+class TemplateIn(BaseModel):
+    name: str
+    description: str = ""
+    sections_html: str
+    css: str = ""
+    js: str = ""
+
+class FromTemplate(BaseModel):
+    template_id: str
+    slug: str
+    title: str
+    enquiry_email: str = ""
 
 # ---------------- ingestion ----------------
 def _clean_links(s):
@@ -272,7 +292,83 @@ async def ingest_site(site_slug):
     await db.sites.update_one({"slug":site_slug},{"$set":{"order":order}})
     if count and not await db.snapshots.find_one({"site":site_slug,"kind":"import"}):
         await create_snapshot(site_slug, "import", "Original (as imported)")
+    await autofill_brand(site_slug, src)
     return count
+
+_HEX = r'#[0-9a-fA-F]{3,8}'
+
+def extract_brand(src_dir):
+    """Best-effort palette + fonts from a site's CSS/HTML. Fills what it can; blanks otherwise."""
+    css = ""
+    for p in glob.glob(os.path.join(src_dir, "**", "*.css"), recursive=True):
+        try: css += open(p, encoding="utf-8", errors="ignore").read() + "\n"
+        except Exception: pass
+    home = ""
+    for name in ("index.html",):
+        fp = os.path.join(src_dir, name)
+        if os.path.isfile(fp):
+            try: home = open(fp, encoding="utf-8", errors="ignore").read()
+            except Exception: pass
+    # inline <style> too
+    for m in re.finditer(r"<style[^>]*>(.*?)</style>", home, re.S | re.I):
+        css += m.group(1) + "\n"
+    out = {"accent": "", "accent_dark": "", "on_accent": "", "heading_font": "",
+           "body_font": "", "font_link": ""}
+    def find_var(names):
+        for nm in names:
+            m = re.search(r'--' + nm + r'\s*:\s*(' + _HEX + r')', css)
+            if m: return m.group(1)
+        return ""
+    out["accent"] = find_var(["accent", "primary", "brand", "brand-color", "brand-colour",
+                              "color-primary", "primary-color", "theme", "highlight"])
+    out["accent_dark"] = find_var(["accent-dark", "accent-d", "primary-dark", "brand-dark"])
+    # google fonts link
+    m = re.search(r'<link[^>]+href="(https://fonts\.googleapis\.com/css2?[^"]+)"', home)
+    if m:
+        out["font_link"] = m.group(1)
+        fams = re.findall(r'family=([^:&]+)', m.group(1))
+        fams = [f.replace("+", " ") for f in fams]
+        if fams: out["heading_font"] = fams[0]
+        if len(fams) > 1: out["body_font"] = fams[1]
+        elif fams: out["body_font"] = fams[0]
+    return out
+
+async def autofill_brand(site_slug, src_dir):
+    """Populate site.branding tokens from the source, without overwriting anything already set."""
+    try:
+        ext = extract_brand(src_dir)
+    except Exception:
+        return
+    s = await db.sites.find_one({"slug": site_slug})
+    b = dict((s or {}).get("branding") or {})
+    changed = False
+    for k, v in ext.items():
+        if v and not b.get(k):
+            b[k] = v; changed = True
+    if changed:
+        await db.sites.update_one({"slug": site_slug}, {"$set": {"branding": b}})
+
+def _brand_root_style(branding):
+    """CSS :root block mapping a site's brand tokens to the --brand-* names templates read."""
+    b = branding or {}
+    lines = []
+    if b.get("accent"): lines.append(f'--brand-accent:{b["accent"]};')
+    if b.get("accent_dark"): lines.append(f'--brand-accent-dark:{b["accent_dark"]};')
+    elif b.get("accent"): lines.append(f'--brand-accent-dark:{b["accent"]};')
+    if b.get("on_accent"): lines.append(f'--brand-on-accent:{b["on_accent"]};')
+    if b.get("heading_font"): lines.append(f"--brand-heading:'{b['heading_font']}',sans-serif;")
+    if b.get("body_font"): lines.append(f"--brand-body:'{b['body_font']}',sans-serif;")
+    if not lines: return ""
+    return "<style>:root{" + "".join(lines) + "}</style>"
+
+def _chrome_from_home(home_template):
+    """Pull the site's header + footer markup so a template page looks native."""
+    soup = BeautifulSoup(home_template, "lxml")
+    body = soup.body or soup
+    header = body.find("header")
+    footer = body.find("footer")
+    return (str(header) if header else ""), (str(footer) if footer else "")
+
 
 async def _page_docs_for(site):
     pages = []
@@ -843,15 +939,23 @@ async def get_branding(slug: str, u=Depends(require_admin)):
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
     b = s.get("branding") or {}
-    return {"brand_name": b.get("brand_name",""), "logo_url": b.get("logo_url",""), "subdomain": s.get("subdomain","")}
+    return {"brand_name": b.get("brand_name",""), "logo_url": b.get("logo_url",""),
+            "subdomain": s.get("subdomain",""),
+            "accent": b.get("accent",""), "accent_dark": b.get("accent_dark",""),
+            "on_accent": b.get("on_accent",""), "heading_font": b.get("heading_font",""),
+            "body_font": b.get("body_font",""), "font_link": b.get("font_link","")}
 
 @api.put("/sites/{slug}/branding")
 async def set_branding(slug: str, body: Branding, u=Depends(require_admin)):
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
     sub = re.sub(r'[^a-z0-9-]', '', body.subdomain.lower())
+    prev = s.get("branding") or {}
     await db.sites.update_one({"slug":slug},{"$set":{
-        "branding": {"brand_name": body.brand_name.strip(), "logo_url": body.logo_url.strip()},
+        "branding": {"brand_name": body.brand_name.strip(), "logo_url": body.logo_url.strip(),
+                     "accent": body.accent.strip(), "accent_dark": body.accent_dark.strip(),
+                     "on_accent": body.on_accent.strip(), "heading_font": body.heading_font.strip(),
+                     "body_font": body.body_font.strip(), "font_link": body.font_link.strip()},
         "subdomain": sub}})
     return {"ok":True}
 
@@ -1230,6 +1334,70 @@ async def create_page(site: str, body: NewPage, u=Depends(current_user)):
     await db.sites.update_one({"slug":site},{"$set":{"order":order}})
     return {"slug":slug}
 
+# ---------------- page templates ----------------
+@api.get("/templates")
+async def list_templates(u=Depends(require_admin)):
+    out = []
+    async for t in db.templates.find().sort("name", 1):
+        out.append({"id": t["_id"], "name": t.get("name",""), "description": t.get("description",""),
+                    "builtin": bool(t.get("builtin"))})
+    return out
+
+@api.post("/templates")
+async def create_template(body: TemplateIn, u=Depends(require_super)):
+    if not body.name.strip() or not body.sections_html.strip():
+        raise HTTPException(400, "Name and HTML are required")
+    tid = uuid.uuid4().hex
+    await db.templates.insert_one({"_id": tid, "name": body.name.strip(),
+        "description": body.description.strip(), "sections_html": body.sections_html,
+        "css": body.css, "js": body.js, "builtin": False,
+        "created": datetime.now(timezone.utc)})
+    return {"id": tid}
+
+@api.delete("/templates/{tid}")
+async def delete_template(tid: str, u=Depends(require_super)):
+    t = await db.templates.find_one({"_id": tid})
+    if t and t.get("builtin"):
+        raise HTTPException(400, "Built-in templates can't be deleted")
+    await db.templates.delete_one({"_id": tid})
+    return {"ok": True}
+
+@api.post("/pages/{site}/from-template")
+async def create_page_from_template(site: str, body: FromTemplate, u=Depends(current_user)):
+    if not scope_ok(u, site): raise HTTPException(403, "Not allowed to edit this site")
+    slug = re.sub(r'[^a-z0-9-]', '-', body.slug.lower()).strip('-')
+    if not slug: raise HTTPException(400, "Invalid URL slug")
+    if slug == "home" or await db.pages.find_one({"site": site, "slug": slug}):
+        raise HTTPException(400, "A page with that URL already exists")
+    tpl = await db.templates.find_one({"_id": body.template_id})
+    if not tpl: raise HTTPException(404, "Template not found")
+    home = await db.pages.find_one({"site": site, "slug": "home"})
+    if not home: raise HTTPException(404, "This site has no home page to take the header/footer from")
+    s = await db.sites.find_one({"slug": site})
+    header, footer = _chrome_from_home(home["template"])
+    sections = tpl.get("sections_html", "")
+    if body.enquiry_email.strip():
+        sections = sections.replace("sales@yourgarage.co.uk", body.enquiry_email.strip())
+    body_html = f'<body>{header}\n<main>{sections}</main>\n{footer}</body>'
+    bodyel = BeautifulSoup(body_html, "lxml").body
+    for el in bodyel.find_all(attrs={"data-eid": True}): del el["data-eid"]
+    for el in bodyel.find_all(attrs={"data-caption": True}): del el["data-caption"]
+    regions = assign_regions(bodyel)
+    # head: reuse site chrome assets (fonts/css) + brand tokens + template component CSS + JS
+    head_assets = list(home.get("head_assets", []))
+    root_style = _brand_root_style(s.get("branding") if s else {})
+    if root_style: head_assets.append(root_style)
+    if tpl.get("css"): head_assets.append(f"<style>{tpl['css']}</style>")
+    if tpl.get("js"): head_assets.append(f"<script>{tpl['js']}</script>")
+    seo = {"title": body.title, "metas": [], "canonical": "", "jsonld": []}
+    doc = {"site": site, "slug": slug, "filename": f"{slug}.html", "title": body.title,
+           "seo": seo, "template": str(bodyel), "regions": regions, "head_assets": head_assets}
+    await db.pages.insert_one(doc)
+    order = s.get("order", []); order.append({"slug": slug, "filename": f"{slug}.html", "title": body.title})
+    await db.sites.update_one({"slug": site}, {"$set": {"order": order}})
+    return {"slug": slug}
+
+
 @api.delete("/pages/{site}/{slug}")
 async def delete_page(site: str, slug: str, u=Depends(current_user)):
     if not scope_ok(u, site): raise HTTPException(403,"Not allowed to edit this site")
@@ -1310,3 +1478,9 @@ async def startup():
             if os.path.isdir(p) and glob.glob(os.path.join(p, "*.html")):
                 if not await db.sites.find_one({"slug": name}):
                     await ingest_site(name)
+    # seed / refresh built-in page templates (idempotent by key)
+    for t in BUILTIN_TEMPLATES:
+        await db.templates.update_one({"key": t["key"]}, {"$set": {
+            "_id": t["key"], "key": t["key"], "name": t["name"], "description": t["description"],
+            "sections_html": t["sections_html"], "css": t["css"], "js": t["js"], "builtin": True}},
+            upsert=True)
