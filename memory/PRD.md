@@ -326,3 +326,25 @@ Built a professional static car-sales page and verified it ingests cleanly.
 - Placeholder photos are remote Unsplash/Pexels (client replaces via editor upload). For real garage sites,
   reuse this folder as the starting point (rename brand, swap images) OR build fresh in a separate Emergent
   chat following the same rules (static HTML, editable content as <img>+text, data-block per car).
+
+## 2026-07-19 (fork) — Car dealership template enhancements FINALIZED (badges + enquiry + block reorder)
+Completed the 4-feature batch the user requested ("do 1, 2, 4 & 5"): Sold/Reserved/New-in status
+badges, per-car Enquiry form, whole-car block reordering, and status styling. Verified 100% (6/6)
+frontend editor flows in iteration_12.json; backend ops curl-verified.
+1. Status badges — page_op ops 'status-sold'/'status-reserved'/'status-new'/'status-clear' set/clear
+   data-status on the closest [data-block] car card. Editor toolbar 'Status' button (posts t:'status')
+   opens StatusModal (App.js:723) with SOLD/RESERVED/NEW IN/Clear (data-testid status-sold|reserved|new|clear).
+   CSS: .car[data-status='sold']::before red 'Sold' pill + grayscale slider + strikethrough price;
+   reserved=orange, new=green.
+2. Enquiry form — static template: each car has .enquire-btn + <body data-enquiry-email>. slider.js
+   initEnquiry() builds a per-car popup (name/phone/email/message) that opens a prefilled mailto: to the
+   dealer. Ribble Valley baked with sales@ribblevalleychequeredflag.co.uk.
+3. Whole-car block reorder — page_op 'move-block-up'/'move-block-down' sibling-swaps the [data-block]
+   card. Editor toolbar gold '◀ Move' / 'Move ▶' buttons (ed-block-btn). Persists to Mongo, iframe reloads.
+4. Static assets merged into BOTH templates: /app/sites_source/car-demo (the live CMS demo, re-ingested)
+   AND the branded Ribble Valley site. Appended status/enquiry CSS + upgraded slider.js (slider+menu+enquiry).
+DELIVERABLES (clickable, served from /app/frontend/public/downloads/):
+- car-sales-template.zip — clean generic starter template (Apex Motors placeholder) for reuse.
+- ribble-valley-chequered-flag-website.zip — full branded client site with the new features integrated.
+CLEANUP: removed stray zips accidentally left inside /app/sites_source/car-demo by the prior session.
+BACKLOG: Finance Calculator (P2, user postponed); modularize server.py + App.js (P3).
