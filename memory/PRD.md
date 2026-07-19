@@ -348,3 +348,17 @@ DELIVERABLES (clickable, served from /app/frontend/public/downloads/):
 - ribble-valley-chequered-flag-website.zip — full branded client site with the new features integrated.
 CLEANUP: removed stray zips accidentally left inside /app/sites_source/car-demo by the prior session.
 BACKLOG: Finance Calculator (P2, user postponed); modularize server.py + App.js (P3).
+
+## 2026-07-19 (fork) — Live RV site "looks unstyled" — diagnosed as STALE CACHE (not a bug)
+- User shared a GoFullPage PDF of live https://maroon-mouse-620417.hostingersite.com/car-sales/ showing
+  the whole page UNSTYLED (giant SVG icons, plain nav, car images stacked full-width, no cards/slider).
+- INVESTIGATION: all assets return 200 with correct MIME (style.css=text/css, slider.js=application/x-javascript);
+  live style.css (12232 bytes) already contains BOTH brand chrome AND the new badge/enquiry rules (== our
+  latest file); live slider.js has initEnquiry. A clean headless Chromium (Playwright) renders the page
+  PERFECTLY. => The user's captured browser used a STALE cached stylesheet/script (Hostinger sets
+  cache-control: public, max-age=604800 = 7 days) from an earlier upload stage.
+- FIX (real, forward-looking): appended cache-busting ?v=20260719 to the style.css + slider.js links in
+  BOTH car-sales/index.html (RV) and /app/sites_source/car-demo/index.html, so every browser fetches the
+  fresh files. Rebuilt both download ZIPs. User needs to re-upload car-sales/index.html (assets unchanged).
+- NOTE: car-demo DB copy in the CMS was NOT re-ingested (keeps clean no-query asset paths for the editor
+  preview, which serves assets via /api/asset/). Only the deliverable HTML carries ?v=.
