@@ -75,7 +75,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v7"
+BUILD_VERSION = "2026-06-13-cms-v8"
 
 @api.get("/version")
 async def version():
@@ -246,6 +246,21 @@ def assign_regions(body):
             reg["href"] = el.get("href", "")
             reg["link"] = True
         regions[eid] = reg
+    # inline values that stand alone (e.g. car spec <span>Year</span><b>2021</b>) — make them
+    # editable too, but ONLY when they are NOT inside a block-level edit tag (so prose paragraphs
+    # with inline <b>/<strong> keep being edited as one region and don't get split).
+    for el in body.find_all(["span", "b", "strong"]):
+        if el.has_attr("data-eid"):
+            continue
+        if el.find(list(EDIT_TAGS) + ["span", "b", "strong"]):
+            continue
+        if el.find_parent(list(EDIT_TAGS)):
+            continue
+        if not el.get_text(strip=True):
+            continue
+        eid = f"t{n}"; n += 1
+        el["data-eid"] = eid
+        regions[eid] = {"type": "text", "value": el.decode_contents()}
     for img in body.find_all("img"):
         eid = f"i{n}"; n += 1
         img["data-eid"] = eid
@@ -487,6 +502,10 @@ def render_page(page, for_editor=False, asset_base=""):
     template = page["template"]
     soup = BeautifulSoup(template, "lxml")
     bodyel = soup.body or soup
+    # uploaded media lives at the SITE ROOT (assets/uploads/..). For pages in a subfolder we must
+    # point back up so the image resolves both in the editor and on the published site.
+    rel = (page.get("relpath") or "").replace("\\", "/")
+    up = "../" * rel.count("/")
     for eid, r in page["regions"].items():
         el = bodyel.find(attrs={"data-eid":eid})
         if not el: continue
@@ -495,7 +514,10 @@ def render_page(page, for_editor=False, asset_base=""):
             if r.get("href") is not None and el.name in ("a","button"):
                 el["href"] = r["href"]
         elif r["type"]=="image":
-            _apply_image(el, r["value"], r.get("alt"))
+            val = r["value"]
+            if up and isinstance(val, str) and val.startswith("assets/uploads/"):
+                val = up + val
+            _apply_image(el, val, r.get("alt"))
             cap = (el.get("data-caption") or "").strip()
             if cap:
                 fc = soup.new_tag("figcaption"); fc["class"] = "ivd-caption"; fc.string = cap
@@ -517,12 +539,26 @@ def render_page(page, for_editor=False, asset_base=""):
     base = f'<base href="{asset_base}">' if asset_base else ""
     editor_assets = EDITOR_INJECT if for_editor else ""
     finance_assets = FINANCE_INJECT if (not for_editor and 'data-block="car"' in inner) else ""
+    status_assets = STATUS_CSS if 'data-block=' in inner else ""
     return f"""<!DOCTYPE html><html lang="en-GB"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">{base}
 {head}
+{status_assets}
 {editor_assets}</head><body>{inner}{finance_assets}</body></html>"""
 
 BLANK_IMG = "data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'940'%20height%3D'705'%3E%3Crect%20width%3D'100%25'%20height%3D'100%25'%20fill%3D'%23e9ecf1'%2F%3E%3Ctext%20x%3D'50%25'%20y%3D'50%25'%20fill%3D'%239aa1ac'%20font-family%3D'Arial%2Csans-serif'%20font-size%3D'40'%20text-anchor%3D'middle'%20dominant-baseline%3D'middle'%3E%2B%20Add%20photo%3C%2Ftext%3E%3C%2Fsvg%3E"
+
+# Sold / Reserved / New-in ribbon styling, injected by the CMS so badges always render on car cards,
+# even when a site's own stylesheet doesn't include them. Generic: targets any [data-block][data-status].
+STATUS_CSS = """<style>
+[data-block][data-status="sold"],[data-block][data-status="reserved"],[data-block][data-status="new"]{position:relative}
+[data-block][data-status="sold"]::before,[data-block][data-status="reserved"]::before,[data-block][data-status="new"]::before{position:absolute;top:14px;left:14px;z-index:6;padding:6px 13px;border-radius:8px;font-family:'Space Grotesk','Sora',system-ui,sans-serif;font-weight:700;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:#fff;box-shadow:0 8px 20px -8px rgba(0,0,0,.55)}
+[data-block][data-status="sold"]::before{content:"Sold";background:#d12b2b}
+[data-block][data-status="reserved"]::before{content:"Reserved";background:#E85D00}
+[data-block][data-status="new"]::before{content:"New in";background:#1f9d55}
+[data-block][data-status="sold"] img{filter:grayscale(.5);opacity:.72}
+[data-block][data-status="sold"] .price,[data-block][data-status="sold"] .uc-price,[data-block][data-status="sold"] [class*="price"]{text-decoration:line-through;opacity:.7}
+</style>"""
 
 EDITOR_INJECT = """
 <style>
@@ -602,7 +638,7 @@ document.addEventListener('DOMContentLoaded',function(){
       var b5=mk('Move \u25B6',function(){post({t:'op',op:'move-block-down',eid:eid});}); b5.className='ed-block-btn';
       var b2=mk('Delete',function(){post({t:'op',op:'delete-block',eid:eid});}); b2.className='ed-block-btn';
       tb.appendChild(b1); tb.appendChild(b6); tb.appendChild(b4); tb.appendChild(b5); tb.appendChild(b2);
-      if(blk.hasAttribute('data-status')){
+      if(blk.hasAttribute('data-status') || (blk.getAttribute('data-block')||'').toLowerCase().indexOf('car')>=0 || blk.querySelector('.price,.uc-price,[class*="price"]')){
         var b3=mk('Status',function(){post({t:'status',eid:eid});}); b3.className='ed-block-btn'; tb.appendChild(b3);
       }
     }

@@ -568,3 +568,27 @@ so nothing inside subfolders was ever imported. Build bumped to cms-v7. Fixed th
   pills on both cars (£530/mo, £934/mo). Test site purged afterwards.
 - USER ACTION: rebuild to cms-v7 → re-ingest (or re-pull) the site → the car-sales page now shows in the
   dashboard/editor; edit it, then Preview/Publish.
+
+## 2026-06-13 (fork) — 3 editor bugs on subfolder car pages (image / specs / status). Build cms-v8.
+All verified end-to-end on an RV clone (incl. a version with data-status stripped to mimic live files):
+1. IMAGE UPLOAD didn't show on subfolder pages: upload returns a ROOT-relative url (assets/uploads/..),
+   but a subfolder page's base is /api/asset/{slug}/car-sales/ so it resolved to car-sales/assets/uploads
+   → 404. FIX: render_page now prefixes uploaded-image values with `../`*depth (from page relpath) so they
+   point back to the site root — works in the editor (browser normalises the ../) AND on publish (relative
+   to car-sales/index.html). Root pages (depth 0) unchanged. Verified: editor src=../assets/uploads/x serves
+   200, dist src=../assets/uploads/x with media copied to dist/assets/uploads.
+2. SPECS (Year/Mileage/Gearbox/mpg/Colour) weren't editable: they are <span>/<b>, which weren't in
+   EDIT_TAGS. FIX: assign_regions now adds a PURELY ADDITIVE pass making standalone <span>/<b>/<strong>
+   editable text regions — but ONLY when NOT inside a block-level edit tag, so prose paragraphs with inline
+   <b>/<strong> still edit as ONE region (no split/regression). Verified: 12 spec values became editable;
+   "2021 (21)" is contenteditable=true in the editor.
+3. NO STATUS OPTION when clicking a car: the Status button was gated on the card already having a
+   data-status attr, which the user's live files lacked. FIX: toolbar now shows Status when the card has
+   data-status OR data-block contains "car" OR the card has a .price/[class*=price]. Also added STATUS_CSS
+   (server-injected, generic [data-block][data-status]::before ribbons for Sold/Reserved/New-in +
+   greyscale/strike-through) so ribbons ALWAYS render in editor + live even if the site CSS lacks them.
+   Verified: status-sold op works on a card with NO prior data-status; toolbar shows
+   [Duplicate, + Blank card, Move, Move, Delete, Status]; SOLD ribbon renders (screenshot).
+- NOTE: the toolbar (incl. Status) appears when you click an EDITABLE element INSIDE a card (title, price,
+  spec, image), not the empty card margin — expected behaviour.
+- USER ACTION: rebuild to cms-v8 → re-ingest → click a car's title/price/spec → Card ▸ Status ▸ Sold.
