@@ -543,3 +543,28 @@ juggling is ever needed. Build bumped to cms-v6.
   with NO site finance JS = 1 injected pill + working modal (£18,450 → £445/mo @48, £377/mo @60, correct).
 - USER PATH FOR RV: rebuild to cms-v6 → open Ribble Valley → click Preview (or Publish) → finance shows
   on the live page automatically. Nothing to upload.
+
+## 2026-06-13 (fork) — CRITICAL: subfolder pages (e.g. /car-sales/) now ingest, edit & publish
+User could only see the home page in the editor; the car-sales page (a SUBFOLDER, car-sales/index.html)
+never appeared. ROOT CAUSE: ingest_site globbed only top-level `*.html` (`os.path.join(src,"*.html")`),
+so nothing inside subfolders was ever imported. Build bumped to cms-v7. Fixed the WHOLE round-trip:
+1. INGEST (ingest_site): now `glob(**/*.html, recursive=True)`; skips asset/hidden/node_modules dirs.
+   Each page stores a `relpath` (site-relative path) + a URL-safe `slug` via new `_slug_for_relpath()`:
+   index.html→home, about.html→about, car-sales/index.html→car-sales, car-sales/stock.html→car-sales__stock
+   (slashes → `__` so path routing never breaks). order[] entries carry relpath too.
+2. EDITOR (editor_page): asset base now points at the page's OWN folder
+   (`/api/asset/{slug}/{dir}/`) so a subfolder page's relative assets (car-sales/assets/..) resolve and
+   the canvas renders STYLED. Root pages unchanged.
+3. PUBLISH/PREVIEW (build_dist): now mirrors the ENTIRE source tree except *.html
+   (`copytree(..., ignore=ignore_patterns("*.html"))`) so nested folders + their own assets are
+   preserved, then renders each page back to its `relpath` (subdirs created). _sftp_push already walks
+   the tree recursively, so subfolder pages upload to the right remote path.
+4. Backward compatible: pages without `relpath` fall back to slug-based filename + root asset base.
+   NEEDS RE-INGEST of a site for existing pages to gain relpath and for subfolder pages to appear.
+- VERIFIED (self-test on an RV-clone "rvtest": root index.html + car-sales/index.html + car-sales/assets):
+  ingest found BOTH pages (home + car-sales); editor base = /api/asset/rvtest/car-sales/ (styled);
+  publish dist mirrored root assets/ AND car-sales/assets/, wrote car-sales/index.html at the right path,
+  data-eid stripped, finance auto-injected. Screenshot: RV car-sales renders fully styled with finance
+  pills on both cars (£530/mo, £934/mo). Test site purged afterwards.
+- USER ACTION: rebuild to cms-v7 → re-ingest (or re-pull) the site → the car-sales page now shows in the
+  dashboard/editor; edit it, then Preview/Publish.

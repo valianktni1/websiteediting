@@ -75,7 +75,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v6"
+BUILD_VERSION = "2026-06-13-cms-v7"
 
 @api.get("/version")
 async def version():
@@ -321,6 +321,18 @@ def ingest_page(html, slug):
         "head_assets": head_assets,
     }
 
+def _slug_for_relpath(relpath):
+    """Map a site-relative HTML path to a URL-safe slug (no slashes, so routing works).
+    index.html -> home ; about.html -> about ; car-sales/index.html -> car-sales ;
+    car-sales/stock.html -> car-sales__stock ; a/b/index.html -> a__b."""
+    relpath = relpath.replace("\\", "/")
+    if relpath == "index.html":
+        return "home"
+    base = relpath[:-5] if relpath.endswith(".html") else relpath
+    if base.endswith("/index"):
+        base = base[:-len("/index")]
+    return base.replace("/", "__")
+
 async def ingest_site(site_slug):
     src = os.path.join(SITES_DIR, site_slug)
     if not os.path.isdir(src): return 0
@@ -328,13 +340,18 @@ async def ingest_site(site_slug):
         "updated_at":datetime.now(timezone.utc).isoformat()}}, upsert=True)
     order=[]
     count=0
-    for path in sorted(glob.glob(os.path.join(src,"*.html"))):
+    # recurse into subfolders (e.g. car-sales/index.html) but skip asset/hidden dirs
+    for path in sorted(glob.glob(os.path.join(src,"**","*.html"), recursive=True)):
+        relpath = os.path.relpath(path, src).replace("\\","/")
+        parts = relpath.split("/")
+        if any(p.startswith(".") for p in parts) or "assets" in parts[:-1] or "node_modules" in parts:
+            continue
+        slug = _slug_for_relpath(relpath)
         fn = os.path.basename(path)
-        slug = "home" if fn=="index.html" else fn[:-5]
         data = ingest_page(open(path,encoding="utf-8").read(), slug)
-        data["site"]=site_slug; data["filename"]=fn
+        data["site"]=site_slug; data["filename"]=fn; data["relpath"]=relpath
         await db.pages.update_one({"site":site_slug,"slug":slug},{"$set":data}, upsert=True)
-        order.append({"slug":slug,"filename":fn,"title":data["title"]})
+        order.append({"slug":slug,"filename":fn,"relpath":relpath,"title":data["title"]})
         count+=1
     await db.sites.update_one({"slug":site_slug},{"$set":{"order":order}})
     if count and not await db.snapshots.find_one({"site":site_slug,"kind":"import"}):
@@ -1178,7 +1195,10 @@ async def remove_site(slug: str, u=Depends(require_super)):
 async def editor_page(slug_site: str, slug: str, u=Depends(current_user)):
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
-    base = f"/api/asset/{slug_site}/"
+    # base points at the page's OWN folder so its relative assets resolve (e.g. car-sales/assets/..)
+    rel = (p.get("relpath") or "").replace("\\","/")
+    folder = rel.rsplit("/",1)[0] if "/" in rel else ""
+    base = f"/api/asset/{slug_site}/{folder}/" if folder else f"/api/asset/{slug_site}/"
     return render_page(p, for_editor=True, asset_base=base)
 
 # serve site assets + uploaded media
@@ -1248,23 +1268,22 @@ def build_dist(site_slug, pages, src_dir):
     out = os.path.join(DIST_DIR, site_slug)
     if os.path.exists(out): shutil.rmtree(out)
     os.makedirs(out, exist_ok=True)
-    # copy assets + root files from source
-    if os.path.isdir(os.path.join(src_dir,"assets")):
-        shutil.copytree(os.path.join(src_dir,"assets"), os.path.join(out,"assets"))
-    for rf in ("robots.txt","llms.txt","llms-full.txt","sitemap.xml",".htaccess"):
-        sp=os.path.join(src_dir,rf)
-        if os.path.isfile(sp): shutil.copy(sp, os.path.join(out,rf))
+    # mirror the whole source tree EXCEPT html pages (those are rendered below),
+    # so nested folders + their assets (e.g. car-sales/assets/..) are preserved
+    if os.path.isdir(src_dir):
+        shutil.copytree(src_dir, out, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.html"))
     # copy uploaded media
     md = os.path.join(MEDIA_DIR, site_slug)
     if os.path.isdir(md):
         dst=os.path.join(out,"assets","uploads"); os.makedirs(dst, exist_ok=True)
         for f in os.listdir(md): shutil.copy(os.path.join(md,f), os.path.join(dst,f))
-    # render pages (rewrite asset_base to relative for hosting)
+    # render pages back to their own relative path (subfolders preserved)
     for p in pages:
         html = render_page(p, for_editor=False, asset_base="")
-        # rewrite uploaded media src to relative path already 'assets/uploads/...'
-        fn = "index.html" if p["slug"]=="home" else f"{p['slug']}.html"
-        open(os.path.join(out,fn),"w",encoding="utf-8").write(html)
+        rel = (p.get("relpath") or ("index.html" if p["slug"]=="home" else f"{p['slug']}.html")).replace("\\","/")
+        dest = os.path.join(out, rel)
+        os.makedirs(os.path.dirname(dest) or out, exist_ok=True)
+        open(dest,"w",encoding="utf-8").write(html)
     return out
 
 @api.post("/sites/{slug}/preview")
