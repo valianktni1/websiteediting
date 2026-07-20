@@ -101,10 +101,104 @@
     });
   }
 
+  // Buyer-facing finance estimator: adds "From £X/mo" under each car + a popup
+  // calculator (deposit / term). Purely runtime, never saved — so it works on the
+  // published site for every car (including cloned/added listings). Skipped inside
+  // the CMS editor iframe to avoid interfering with click-to-edit.
+  function fmtMoney(n) { return '£' + Math.round(n).toLocaleString('en-GB'); }
+  function parsePrice(txt) {
+    var m = (txt || '').replace(/[, ]/g, '').match(/(\d{3,})/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  function pmt(principal, aprPct, months) {
+    var i = aprPct / 100 / 12;
+    if (i <= 0) return principal / months;
+    return principal * i / (1 - Math.pow(1 + i, -months));
+  }
+  function initFinance() {
+    if (window.self !== window.top) return; // don't run in the editor canvas
+    var cars = document.querySelectorAll('[data-block="car"], .car');
+    if (!cars.length) return;
+    var APR = parseFloat(document.body.getAttribute('data-finance-apr')) || 12.9;
+    var TERM = parseInt(document.body.getAttribute('data-finance-term'), 10) || 48;
+    var DEP = parseFloat(document.body.getAttribute('data-finance-deposit-pct'));
+    if (isNaN(DEP)) DEP = 10;
+
+    // shared popup
+    var ov = document.createElement('div');
+    ov.className = 'fin-overlay';
+    ov.innerHTML =
+      '<div class="fin-modal" role="dialog" aria-modal="true">' +
+      '<button class="fin-close" type="button" aria-label="Close">&times;</button>' +
+      '<h3 class="fin-title">Finance estimate</h3>' +
+      '<p class="fin-car"></p>' +
+      '<div class="fin-line"><span>Cash price</span><b class="fin-price"></b></div>' +
+      '<label class="fin-ctl">Deposit <b class="fin-dep-val"></b>' +
+      '<input class="fin-dep" type="range" min="0" max="50" step="5"></label>' +
+      '<div class="fin-ctl"><span>Term</span><span class="fin-terms">' +
+      '<button type="button" data-t="24">24</button><button type="button" data-t="36">36</button>' +
+      '<button type="button" data-t="48">48</button><button type="button" data-t="60">60</button>' +
+      '</span></div>' +
+      '<div class="fin-result"><span>Estimated monthly</span><b class="fin-monthly"></b></div>' +
+      '<p class="fin-note">Representative example at <b class="fin-apr"></b>% APR. This is an illustration only, not a quote or an offer of finance. Subject to status &amp; affordability.</p>' +
+      '<button class="btn btn-solid fin-enquire" type="button">Ask us about finance</button>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var cur = { price: 0, dep: DEP, term: TERM, car: null };
+    var elPrice = ov.querySelector('.fin-price'), elDepV = ov.querySelector('.fin-dep-val'),
+        elDep = ov.querySelector('.fin-dep'), elMon = ov.querySelector('.fin-monthly'),
+        elCar = ov.querySelector('.fin-car'), elApr = ov.querySelector('.fin-apr');
+    elApr.textContent = APR;
+    function recalc() {
+      var principal = cur.price * (1 - cur.dep / 100);
+      elPrice.textContent = fmtMoney(cur.price);
+      elDepV.textContent = cur.dep + '% (' + fmtMoney(cur.price * cur.dep / 100) + ')';
+      elMon.textContent = fmtMoney(pmt(principal, APR, cur.term)) + '/mo';
+      ov.querySelectorAll('.fin-terms button').forEach(function (b) {
+        b.classList.toggle('on', parseInt(b.getAttribute('data-t'), 10) === cur.term);
+      });
+    }
+    function open(car, price) {
+      cur.price = price; cur.dep = DEP; cur.term = TERM; cur.car = car;
+      var h = car.querySelector('.car-head h3, h3');
+      elCar.textContent = h ? h.textContent.trim() : '';
+      elDep.value = DEP; recalc(); ov.classList.add('on');
+    }
+    function close() { ov.classList.remove('on'); }
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    ov.querySelector('.fin-close').addEventListener('click', close);
+    elDep.addEventListener('input', function () { cur.dep = parseInt(elDep.value, 10); recalc(); });
+    ov.querySelectorAll('.fin-terms button').forEach(function (b) {
+      b.addEventListener('click', function () { cur.term = parseInt(b.getAttribute('data-t'), 10); recalc(); });
+    });
+    ov.querySelector('.fin-enquire').addEventListener('click', function () {
+      close();
+      var eb = cur.car && cur.car.querySelector('.enquire-btn');
+      if (eb) eb.click();
+    });
+
+    cars.forEach(function (car) {
+      var priceEl = car.querySelector('.price');
+      if (!priceEl) return;
+      var price = parsePrice(priceEl.textContent);
+      if (!price || price < 500) return;
+      var monthly = pmt(price * (1 - DEP / 100), APR, TERM);
+      var fin = document.createElement('div');
+      fin.className = 'finance';
+      fin.innerHTML = '<span class="finance-from">From <b>' + fmtMoney(monthly) + '</b>/mo</span>' +
+        '<button type="button" class="finance-btn">Finance example &rsaquo;</button>';
+      var head = car.querySelector('.car-head');
+      if (head) head.insertAdjacentElement('afterend', fin);
+      else priceEl.insertAdjacentElement('afterend', fin);
+      fin.querySelector('.finance-btn').addEventListener('click', function () { open(car, price); });
+    });
+  }
+
   function initAll() {
     document.querySelectorAll('[data-slider]').forEach(initSlider);
     initMenu();
     initEnquiry();
+    initFinance();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAll);

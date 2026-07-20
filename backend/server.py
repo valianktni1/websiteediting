@@ -504,6 +504,8 @@ def render_page(page, for_editor=False, asset_base=""):
 {head}
 {editor_assets}</head><body>{inner}</body></html>"""
 
+BLANK_IMG = "data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'940'%20height%3D'705'%3E%3Crect%20width%3D'100%25'%20height%3D'100%25'%20fill%3D'%23e9ecf1'%2F%3E%3Ctext%20x%3D'50%25'%20y%3D'50%25'%20fill%3D'%239aa1ac'%20font-family%3D'Arial%2Csans-serif'%20font-size%3D'40'%20text-anchor%3D'middle'%20dominant-baseline%3D'middle'%3E%2B%20Add%20photo%3C%2Ftext%3E%3C%2Fsvg%3E"
+
 EDITOR_INJECT = """
 <style>
 [data-eid]{outline:1px dashed rgba(167,140,70,0);transition:outline .12s;cursor:pointer}
@@ -577,10 +579,11 @@ document.addEventListener('DOMContentLoaded',function(){
         var lk=mk('Link',function(){post({t:'link',eid:blk.getAttribute('data-eid'),href:blk.getAttribute('href')||''});}); lk.className='ed-block-btn'; tb.appendChild(lk);
       }
       var b1=mk('Duplicate',function(){post({t:'op',op:'duplicate-block',eid:eid});}); b1.className='ed-block-btn';
+      var b6=mk('+ Blank card',function(){post({t:'op',op:'add-blank-block',eid:eid});}); b6.className='ed-block-btn';
       var b4=mk('\u25C0 Move',function(){post({t:'op',op:'move-block-up',eid:eid});}); b4.className='ed-block-btn';
       var b5=mk('Move \u25B6',function(){post({t:'op',op:'move-block-down',eid:eid});}); b5.className='ed-block-btn';
       var b2=mk('Delete',function(){post({t:'op',op:'delete-block',eid:eid});}); b2.className='ed-block-btn';
-      tb.appendChild(b1); tb.appendChild(b4); tb.appendChild(b5); tb.appendChild(b2);
+      tb.appendChild(b1); tb.appendChild(b6); tb.appendChild(b4); tb.appendChild(b5); tb.appendChild(b2);
       if(blk.hasAttribute('data-status')){
         var b3=mk('Status',function(){post({t:'status',eid:eid});}); b3.className='ed-block-btn'; tb.appendChild(b3);
       }
@@ -820,7 +823,7 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
-    if body.op not in ("duplicate","delete","add-image","add-button","move-up","move-down","swap-image","duplicate-block","delete-block","move-block-up","move-block-down","status-sold","status-reserved","status-new","status-clear"):
+    if body.op not in ("duplicate","delete","add-image","add-button","move-up","move-down","swap-image","duplicate-block","delete-block","add-blank-block","move-block-up","move-block-down","status-sold","status-reserved","status-new","status-clear"):
         raise HTTPException(400,"Unknown operation")
     if body.op == "swap-image":
         r1 = p.get("regions",{}).get(body.eid); r2 = p.get("regions",{}).get(body.ref or "")
@@ -875,6 +878,33 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
             block.insert_after(_c.copy(block))
         else:
             block.decompose()
+    elif body.op == "add-blank-block":
+        block = target.find_parent(attrs={"data-block": True})
+        if not block:
+            raise HTTPException(400,"This element isn't inside a card.")
+        import copy as _c
+        clone = _c.copy(block)
+        if clone.has_attr("data-status"): clone["data-status"] = ""
+        # collapse each image gallery to a single placeholder slide
+        seen = set()
+        for img in list(clone.find_all("img")):
+            pid = id(img.parent)
+            if pid in seen: img.decompose()
+            else: seen.add(pid)
+        # neutral placeholder images
+        for img in clone.find_all("img"):
+            img["src"] = BLANK_IMG
+            for a in ("srcset","sizes","data-src","data-srcset","data-lazy-src","loading"):
+                if img.has_attr(a): del img[a]
+            img["alt"] = ""
+        # blank the editable text (keep a short placeholder so it stays clickable;
+        # leave <a>/<button> CTA labels intact)
+        for el in clone.find_all(list(EDIT_TAGS)):
+            if el.find(list(EDIT_TAGS)): continue
+            if not el.get_text(strip=True): continue
+            if el.name in ("a","button"): continue
+            el.clear(); el.append("Edit")
+        block.insert_after(clone)
     elif body.op in ("move-block-up","move-block-down"):
         block = target.find_parent(attrs={"data-block": True})
         if not block:
