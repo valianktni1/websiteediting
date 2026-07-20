@@ -592,3 +592,20 @@ All verified end-to-end on an RV clone (incl. a version with data-status strippe
 - NOTE: the toolbar (incl. Status) appears when you click an EDITABLE element INSIDE a card (title, price,
   spec, image), not the empty card margin — expected behaviour.
 - USER ACTION: rebuild to cms-v8 → re-ingest → click a car's title/price/spec → Card ▸ Status ▸ Sold.
+
+## 2026-06-13 (fork) — Editable text inside logo/brand links (the un-editable "Apex" footer). Build cms-v9.
+User removed "Apex" everywhere except a footer brand heading they couldn't edit. ROOT CAUSE: the brand is
+a logo LINK wrapping the name in spans (`<a class="foot-brand"><svg/><span class="brand-name">Apex Ribble
+Valley</span>..</a>`). The editor treats any link-with-children as a card-link (link-only, no text edit),
+and the inline pass skipped spans inside links → the brand text was locked.
+FIX (assign_regions): added `_is_card_link()` (a/button wrapping svg/img/span, i.e. not a plain text link).
+- Block loop now SKIPS creating a whole-element text region for card-links (they get a link region instead).
+- Inline pass now ALLOWS <span>/<b>/<strong> that sit inside a card-link to become their own editable text
+  regions (previously blocked by the find_parent(EDIT_TAGS) check). Plain text links + prose paragraphs are
+  unchanged (still one region; inline <b> not split).
+- Editor: added e.stopPropagation() on element clicks so clicking an inner brand span selects/edits the SPAN
+  rather than bubbling up and re-selecting the parent link.
+VERIFIED: injected "Apex Ribble Valley" into brand-name spans on an RV clone → after ingest both the header
+AND footer brand names are editable text regions; the brand link still exposes a link region (href editable);
+clicking the footer brand text selects the span (contenteditable=true, ed-sel) so "Apex" can be edited out.
+- USER ACTION: rebuild to cms-v9 → re-ingest → click the footer/header brand text → edit/delete "Apex".

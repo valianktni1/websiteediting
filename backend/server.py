@@ -10,6 +10,7 @@ from templates_seed import BUILTIN_TEMPLATES
 import bcrypt, jwt
 from bson import ObjectId
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -75,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v8"
+BUILD_VERSION = "2026-06-13-cms-v9"
 
 @api.get("/version")
 async def version():
@@ -227,6 +228,14 @@ def _apply_image(el, value, alt=None):
     if alt is not None:
         el["alt"] = alt
 
+def _is_card_link(el):
+    """A link/button that wraps structural content (svg/img/div/span) rather than being a
+    plain text link. Its inner text isn't editable as one region, so we treat it as a link
+    and expose its inner text spans separately."""
+    INLINE_FMT = {"b","strong","i","em","u","small","br","sub","sup","mark"}
+    return el.name in ("a","button") and any(
+        isinstance(c, Tag) and c.name not in INLINE_FMT for c in el.children)
+
 def assign_regions(body):
     """Clear + reassign data-eid across the body and return a fresh regions dict.
     Shared by ingest and structural edits so eids/regions stay consistent."""
@@ -239,6 +248,10 @@ def assign_regions(body):
             continue
         if not el.get_text(strip=True):
             continue
+        # card-style links/buttons (wrapping svg/img/span) are handled as links below and their
+        # inner text spans are made editable separately — don't lock their text into one region
+        if _is_card_link(el):
+            continue
         eid = f"t{n}"; n += 1
         el["data-eid"] = eid
         reg = {"type": "text", "value": el.decode_contents()}
@@ -246,17 +259,18 @@ def assign_regions(body):
             reg["href"] = el.get("href", "")
             reg["link"] = True
         regions[eid] = reg
-    # inline values that stand alone (e.g. car spec <span>Year</span><b>2021</b>) — make them
-    # editable too, but ONLY when they are NOT inside a block-level edit tag (so prose paragraphs
-    # with inline <b>/<strong> keep being edited as one region and don't get split).
+    # inline values that stand alone (e.g. car spec <span>Year</span><b>2021</b>, or the brand
+    # name inside a logo link) — make them editable too, but NOT when inside a block-level text
+    # region (so prose paragraphs with inline <b>/<strong> keep editing as one region).
     for el in body.find_all(["span", "b", "strong"]):
         if el.has_attr("data-eid"):
             continue
         if el.find(list(EDIT_TAGS) + ["span", "b", "strong"]):
             continue
-        if el.find_parent(list(EDIT_TAGS)):
-            continue
         if not el.get_text(strip=True):
+            continue
+        parent_edit = el.find_parent(list(EDIT_TAGS))
+        if parent_edit is not None and not _is_card_link(parent_edit):
             continue
         eid = f"t{n}"; n += 1
         el["data-eid"] = eid
@@ -662,7 +676,7 @@ document.addEventListener('DOMContentLoaded',function(){
         el.addEventListener('focus',function(){select(el);});
         el.addEventListener('blur',function(){ post({t:'text',eid:eid,value:el.innerHTML}); });
       }
-      el.addEventListener('click',function(e){ if(el.tagName==='A'||el.tagName==='BUTTON'){e.preventDefault();} select(el); });
+      el.addEventListener('click',function(e){ if(el.tagName==='A'||el.tagName==='BUTTON'){e.preventDefault();} e.stopPropagation(); select(el); });
     }
   });
   document.addEventListener('scroll',function(){ if(sel && tb.style.display!=='none') place(sel); },true);
