@@ -637,3 +637,22 @@ added a new .html → re-ingest added it (added:1) while preserving edits.
 - IMPLICATION: to pull a genuinely fresh copy of an already-imported page from source, the user must
   delete that page/site first (edits win by default). This is the correct trade-off for their workflow.
 - USER ACTION: rebuild to cms-v11 → re-ingest freely; edits are now kept.
+
+## 2026-06-13 (fork) — Add-anywhere + max editability. Build cms-v12.
+1. ADD ANYWHERE: new `add-el` page_op (kind = heading|paragraph|button|image) inserts a new element right
+   after the selected element (or its block). Editor toolbar now has an "ADD:" group (+ Heading / + Text /
+   + Button / + Image) on EVERY selection (removed the old "+ Button only shows on links" limitation).
+   Buttons clone an existing .btn class if present. Frontend op handler forwards `kind`. Verified all 4 types
+   insert and appear in the editor.
+2. MAX EDITABILITY: new `_wrap_loose_text(soup, body)` in ingest_page wraps stray visible text (a word
+   sitting directly in a <div>, or text beside a <span> in a logo link — e.g. the "Apex" footer) in
+   `<span class="ivd-txt">` so it becomes an editable region. Skips script/style/svg/pre/etc and pure-text
+   edit tags (already regions). Runs on INGEST, so NEW imports get near-total text editability. Verified:
+   loose "Apex" + loose div text both became editable; footer/header both clickable (contenteditable span).
+   NOTE: applies to newly-imported pages; existing pages keep their edits (edit-preserving re-ingest) so to
+   gain wrapping on an old page, re-import it fresh (delete + re-add).
+- ACCESS CONTROL: user chose to DEFER (leave for now).
+- NEXT (user's idea, agreed): a superadmin "New site from a design/HTML" button — scaffold a new client
+  site from ready-made HTML files, create the client user, set SFTP, publish to Hostinger. Fits existing
+  SITES_DIR + ingest + publish flow. To build next.
+- USER ACTION: rebuild to cms-v12 → new sites are near-fully editable + "Add:" appears on every element.

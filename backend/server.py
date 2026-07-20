@@ -10,7 +10,7 @@ from templates_seed import BUILTIN_TEMPLATES
 import bcrypt, jwt
 from bson import ObjectId
 from bs4 import BeautifulSoup
-from bs4.element import Tag
+from bs4.element import Tag, NavigableString
 from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v11"
+BUILD_VERSION = "2026-06-13-cms-v12"
 
 @api.get("/version")
 async def version():
@@ -142,6 +142,7 @@ class PageOp(BaseModel):
     op: str
     eid: str
     ref: str | None = None
+    kind: str | None = None
 class AltSuggest(BaseModel):
     eid: str
 class CaptionUpdate(BaseModel):
@@ -311,6 +312,34 @@ def _tag_repeating_blocks(soup):
             if has_card:
                 c["data-block"] = c.get("class")[0]
 
+WRAP_SKIP = {"script","style","svg","title","textarea","noscript","code","pre","head","select","option","template","math"}
+
+def _wrap_loose_text(soup, body):
+    """Wrap stray visible text (e.g. a word sitting directly inside a <div>, or text next to a
+    <span> inside a logo link) in a <span class="ivd-txt"> so it becomes an editable region.
+    Makes almost all visible copy editable on ANY imported site. Skips scripts/styles/svg and
+    text that is already the sole content of a normal edit tag (handled as a region already)."""
+    for node in list(body.find_all(string=True)):
+        if not isinstance(node, NavigableString):
+            continue
+        if not node.strip():
+            continue
+        parent = node.parent
+        if parent is None or parent.name in WRAP_SKIP:
+            continue
+        if parent.find_parent(list(WRAP_SKIP)):
+            continue
+        has_tag_children = any(isinstance(c, Tag) for c in parent.children)
+        # pure-text edit tags (e.g. <p>hi</p>, <h2>hi</h2>) are already editable regions — leave them
+        if parent.name in EDIT_TAGS and not has_tag_children:
+            continue
+        if parent.name in ("span", "b", "strong", "i", "em") and not has_tag_children:
+            continue
+        span = soup.new_tag("span")
+        span["class"] = ["ivd-txt"]
+        span.string = str(node)
+        node.replace_with(span)
+
 def ingest_page(html, slug):
     html = _relativize_assets(html)
     soup = BeautifulSoup(html, "lxml")
@@ -330,6 +359,7 @@ def ingest_page(html, slug):
     # body only for template
     body = soup.body
     _tag_repeating_blocks(body)
+    _wrap_loose_text(soup, body)
     regions = assign_regions(body)
     n = len(regions)
     template = str(body)
@@ -664,9 +694,14 @@ document.addEventListener('DOMContentLoaded',function(){
       tb.appendChild(mk('\u2191 Up',function(){post({t:'op',op:'move-up',eid:eid});}));
       tb.appendChild(mk('\u2193 Down',function(){post({t:'op',op:'move-down',eid:eid});}));
       tb.appendChild(mk('Duplicate',function(){post({t:'op',op:'duplicate',eid:eid});}));
-      if(isLink) tb.appendChild(mk('+ Button',function(){post({t:'op',op:'add-button',eid:eid});}));
       tb.appendChild(mk('Delete',function(){post({t:'op',op:'delete',eid:eid});}));
     }
+    // --- add new element anywhere ---
+    var alab=document.createElement('span'); alab.className='ed-div'; alab.textContent='Add:'; tb.appendChild(alab);
+    tb.appendChild(mk('+ Heading',function(){post({t:'op',op:'add-el',eid:eid,kind:'heading'});}));
+    tb.appendChild(mk('+ Text',function(){post({t:'op',op:'add-el',eid:eid,kind:'paragraph'});}));
+    tb.appendChild(mk('+ Button',function(){post({t:'op',op:'add-el',eid:eid,kind:'button'});}));
+    tb.appendChild(mk('+ Image',function(){post({t:'op',op:'add-el',eid:eid,kind:'image'});}));
     // --- whole card group ---
     if(blk){
       var lab=document.createElement('span'); lab.className='ed-div'; lab.textContent='Card:'; tb.appendChild(lab);
@@ -1014,7 +1049,7 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
-    if body.op not in ("duplicate","delete","add-image","add-button","move-up","move-down","swap-image","duplicate-block","delete-block","add-blank-block","move-block-up","move-block-down","status-sold","status-reserved","status-new","status-clear"):
+    if body.op not in ("duplicate","delete","add-image","add-button","add-el","move-up","move-down","swap-image","duplicate-block","delete-block","add-blank-block","move-block-up","move-block-down","status-sold","status-reserved","status-new","status-clear"):
         raise HTTPException(400,"Unknown operation")
     if body.op == "swap-image":
         r1 = p.get("regions",{}).get(body.eid); r2 = p.get("regions",{}).get(body.ref or "")
@@ -1054,6 +1089,22 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
         else: new["class"] = ["btn"]
         new.string = "New button"
         target.insert_after(new)
+    elif body.op=="add-el":
+        kind = (body.kind or "paragraph").lower()
+        block = target.find_parent(attrs={"data-block": True})
+        anchor = block if block is not None else target
+        if kind == "heading":
+            new = soup.new_tag("h2"); new.string = "New heading"
+        elif kind == "button":
+            ref = bodyel.find(lambda t: t.name in ("a","button") and t.get("class") and any("btn" in c.lower() for c in t.get("class")))
+            new = soup.new_tag("a", href="#")
+            new["class"] = ref.get("class") if (ref and ref.get("class")) else ["btn"]
+            new.string = "New button"
+        elif kind == "image":
+            new = soup.new_tag("img"); new["src"] = BLANK_IMG; new["alt"] = ""
+        else:
+            new = soup.new_tag("p"); new.string = "New paragraph — click to edit."
+        anchor.insert_after(new)
     elif body.op=="move-up":
         prev = target.find_previous_sibling()
         if prev: prev.insert_before(target.extract())

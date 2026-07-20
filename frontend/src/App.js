@@ -1072,9 +1072,9 @@ function Editor({ site, page, onBack, flash }) {
             ? "Remove this whole card/block? A restore point is saved first, so you can undo it."
             : "Delete this element? It will be removed on the next publish (a backup is always kept).")) return;
       try {
-        await axios.post(`${API}/pages/${site}/${page}/op`, { op: d.op, eid: d.eid, ref: d.ref });
+        await axios.post(`${API}/pages/${site}/${page}/op`, { op: d.op, eid: d.eid, ref: d.ref, kind: d.kind });
         setDirty(true); setCanUndo(true);
-        const msg = { "delete": "Deleted", "add-button": "Button added", "add-image": "Image added — click it to replace", "move-up": "Moved up", "move-down": "Moved down", "swap-image": "Photos reordered", "duplicate-block": "Card duplicated", "add-blank-block": "Blank card added — click to fill it in", "delete-block": "Card removed", "move-block-up": "Card moved", "move-block-down": "Card moved" }[d.op] || "Duplicated";
+        const msg = { "delete": "Deleted", "add-button": "Button added", "add-el": (d.kind === "image" ? "Image added — click it to replace" : (d.kind === "heading" ? "Heading added — click to edit" : (d.kind === "button" ? "Button added — click to edit" : "Text added — click to edit"))), "add-image": "Image added — click it to replace", "move-up": "Moved up", "move-down": "Moved down", "swap-image": "Photos reordered", "duplicate-block": "Card duplicated", "add-blank-block": "Blank card added — click to fill it in", "delete-block": "Card removed", "move-block-up": "Card moved", "move-block-down": "Card moved" }[d.op] || "Duplicated";
         flash(msg);
         setNonce(n => n + 1); // reload iframe to reflect structural change
       } catch (e) { flash(e.response?.data?.detail || "Could not apply change"); }
