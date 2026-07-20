@@ -195,6 +195,19 @@ def _clean_links(s):
     s = re.sub(r'href="https?://[^"]*?/([a-z0-9-]+)\.html"', r'href="/\1/"', s)
     return s
 
+_ASSET_EXT = r'(?:css|js|mjs|png|jpe?g|gif|svg|webp|avif|ico|bmp|woff2?|ttf|otf|eot|mp4|webm|ogg|pdf)'
+def _relativize_assets(html):
+    """Root-absolute asset refs (e.g. src="/assets/..") bypass the editor's <base> tag and 404,
+    which shows the site unstyled ('massive icons'). Published pages are flat at site root, so
+    making these relative is safe for both the editor canvas and publishing. Nav links (e.g.
+    /about/) are left untouched — only src, asset-file hrefs and url() are relativized."""
+    html = re.sub(r'\bsrc="/(?!/)', 'src="', html)
+    html = re.sub(r"\bsrc='/(?!/)", "src='", html)
+    html = re.sub(r'\bsrcset="/(?!/)', 'srcset="', html)
+    html = re.sub(r'\bhref="/(?!/)([^"]*\.' + _ASSET_EXT + r'(?:\?[^"]*)?)"', r'href="\1"', html, flags=re.I)
+    html = re.sub(r'url\((["\']?)/(?!/)', r'url(\1', html)
+    return html
+
 def _set_html(el, html):
     el.clear()
     frag = BeautifulSoup(html or "", "html.parser")
@@ -238,6 +251,7 @@ def assign_regions(body):
     return regions
 
 def ingest_page(html, slug):
+    html = _relativize_assets(html)
     soup = BeautifulSoup(html, "lxml")
     # SEO
     title = soup.title.string if soup.title else ""

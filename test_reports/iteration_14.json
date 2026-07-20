@@ -1,0 +1,32 @@
+{
+  "summary": "Verified (1) importer _relativize_assets fix: 'ivorydigital' site now renders FULLY STYLED in the editor canvas — serif Cormorant Garamond H1 (62.4px), Jost body on ivory bg #f8f7f1, small Ivory Digital script logo, gold accent on 'START YOUR FREE 7-DAY TRIAL' button + 'BESPOKE BOOKING SYSTEMS' eyebrow; stylesheet /api/asset/ivorydigital/assets/css/style.v3.css returns 200 text/css; base=/api/asset/ivorydigital/. NO massive/unstyled icons. (2) Templates tab is present and functional — Admin settings > tab-templates lists 'Used Cars / Stock page' with BUILT-IN badge and description; superadmin sees '+ Add a template' (add-template-btn). (3) AddPageModal blank/template toggle works on car-demo: mode-blank + mode-template both present; template mode reveals addpage-template dropdown and addpage-enquiry-email input. (4) car-demo regression: still renders styled (Sora heading, Manrope body, Apex Motors header, 0 root-absolute asset refs, base=/api/asset/car-demo/, style.css loaded). All 5 review items PASS.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_results": {
+    "ivorydigital_styled_editor_canvas": "PASS — h1='Beautiful booking software, built just for your bridal boutique.' rendered in Cormorant Garamond 62.4px; body font=Jost on rgb(248,247,241) ivory bg; small logo.png rendered at 560x184 natural; base=https://.../api/asset/ivorydigital/; 2 stylesheets loaded (Google Fonts + style.v3.css both 200 text/css). No oversized icons — screenshot iv_editor.png shows fully styled hero + product cards.",
+    "no_broken_root_absolute_asset_refs": "PASS — style.v3.css fetched 200 text/css from iframe context. The 23 remaining root-absolute refs are nav links (href='/about/', '/pricing/', '/faq/' etc) — correctly LEFT UNTOUCHED per _relativize_assets design (only asset file extensions rewrite). 0 root-absolute *asset* (css/js/img) refs.",
+    "templates_tab_present_and_lists_builtin": "PASS — tab-templates count=1; clicking opens 'Used Cars / Stock page' with 'BUILT-IN' badge and full description; add-template-btn visible (superadmin).",
+    "addpage_modal_template_toggle_regression": "PASS — mode-blank + mode-template segmented toggle present on car-demo AddPageModal; selecting template mode reveals addpage-template dropdown and addpage-enquiry-email input.",
+    "car_demo_still_renders_styled": "PASS — base=/api/asset/car-demo/; Apex Motors header (Our stock/Why us/Finance/Contact/01234 567 890) + hero 'Hand-picked used cars, honestly priced.' in Sora; Manrope body on dark #0c0e12 bg; amber 'View our stock' button; style.css?v=20260719 loaded; 0 root-absolute asset refs."
+  },
+  "evidence_screenshots": [
+    "/app/.screenshots/iv_editor.png (ivorydigital home in editor — styled: serif Cormorant Garamond, ivory bg, gold accents, small logo, dashboard screenshot)",
+    "/app/.screenshots/iv_dashboard.png (22 ingested pages listed)",
+    "/app/.screenshots/templates_tab.png (Templates tab with Used Cars/Stock page BUILT-IN + Add a template)",
+    "/app/.screenshots/cardemo.png (car-demo regression — Apex Motors header, Sora heading, amber accents)"
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_relativize_assets is correctly scoped: only src=, srcset=, url(), and hrefs ending in asset extensions get relativized — nav <a href='/about/'> links are preserved so in-editor navigation is unaffected. Good.",
+    "Since a self-hosted user reported they can't see Templates and still see unstyled ivorydigital, the code in this preview is correct — the issue on their side is a stale Docker frontend build. Recommend main agent instruct the user to rebuild frontend (yarn build) and re-run their importer to re-ingest with _relativize_assets applied to existing pages."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not directly tested (auth-gated; verified via UI + iframe fetches)", "frontend": "100% (5/5 review items PASS)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (superadmin) — worked.",
+  "seed_data_creation": "None — no persistent changes made.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The Admin settings modal does NOT close via Escape key — use the × close button [inside .modal-overlay button] or click outside. tab-templates already verified in iteration_13 & 14. To re-ingest ivorydigital after importer change, main agent uses backend re-ingest endpoint (already done). The 23 root-absolute nav-link refs remaining in the ivorydigital iframe HTML are intentional — those are page links (/about/, /pricing/), not assets.",
+  "rca of the issue": "N/A — the code fix is verified working in preview. User's real-world complaint (massive icons, no Templates) is a deployment-side stale build issue on their self-hosted Docker instance, NOT a code bug."
+}
