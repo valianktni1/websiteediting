@@ -75,7 +75,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v5"
+BUILD_VERSION = "2026-06-13-cms-v6"
 
 @api.get("/version")
 async def version():
@@ -499,10 +499,11 @@ def render_page(page, for_editor=False, asset_base=""):
     head += '\n<style>.ivd-caption{display:block;text-align:center;font-size:.85rem;color:#666;margin:.4rem auto 1rem;font-style:italic;max-width:90%;}</style>'
     base = f'<base href="{asset_base}">' if asset_base else ""
     editor_assets = EDITOR_INJECT if for_editor else ""
+    finance_assets = FINANCE_INJECT if (not for_editor and 'data-block="car"' in inner) else ""
     return f"""<!DOCTYPE html><html lang="en-GB"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">{base}
 {head}
-{editor_assets}</head><body>{inner}</body></html>"""
+{editor_assets}</head><body>{inner}{finance_assets}</body></html>"""
 
 BLANK_IMG = "data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'940'%20height%3D'705'%3E%3Crect%20width%3D'100%25'%20height%3D'100%25'%20fill%3D'%23e9ecf1'%2F%3E%3Ctext%20x%3D'50%25'%20y%3D'50%25'%20fill%3D'%239aa1ac'%20font-family%3D'Arial%2Csans-serif'%20font-size%3D'40'%20text-anchor%3D'middle'%20dominant-baseline%3D'middle'%3E%2B%20Add%20photo%3C%2Ftext%3E%3C%2Fsvg%3E"
 
@@ -620,6 +621,102 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 </script>
 """
+
+# Buyer-facing finance estimator, auto-injected by the CMS into ANY published/preview page
+# that contains car cards ([data-block="car"]). Generic (works on .car/.price and .uc-car/.uc-price
+# and any [class*=price]) and idempotent: skips cars that already show a finance pill from their
+# own site JS. Runtime-only, never stored; hidden inside the editor canvas (top-level guard).
+FINANCE_INJECT = """
+<style>
+.ivdfin-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0 4px;padding:11px 14px;background:rgba(127,127,127,.08);border:1px solid rgba(127,127,127,.22);border-radius:12px;font-family:inherit}
+.ivdfin-from{font-size:.9rem;opacity:.82}
+.ivdfin-from b{font-weight:700;font-size:1.08rem}
+.ivdfin-btn{background:none;border:none;font-weight:600;font-size:.85rem;cursor:pointer;padding:4px 2px;font-family:inherit}
+.ivdfin-ov{position:fixed;inset:0;background:rgba(8,9,11,.72);display:none;align-items:center;justify-content:center;z-index:2147482000;padding:20px}
+.ivdfin-ov.on{display:flex}
+.ivdfin-modal{background:#fff;color:#14181e;border-radius:16px;max-width:420px;width:100%;padding:28px;position:relative;box-shadow:0 30px 80px -30px rgba(0,0,0,.6);font-family:system-ui,-apple-system,Arial,sans-serif}
+.ivdfin-close{position:absolute;top:12px;right:16px;background:none;border:none;font-size:1.8rem;line-height:1;color:#8a8f98;cursor:pointer}
+.ivdfin-title{font-size:1.3rem;margin:0 0 4px;font-weight:700}
+.ivdfin-car{font-weight:600;font-size:.9rem;margin:0 0 18px}
+.ivdfin-line{display:flex;justify-content:space-between;font-size:.95rem;padding:8px 0;border-bottom:1px solid #eef0f3}
+.ivdfin-line b{font-weight:700}
+.ivdfin-ctl{display:block;font-size:.74rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:#616873;margin:16px 0 6px}
+.ivdfin-ctl b{color:#14181e;text-transform:none;letter-spacing:0;font-size:.9rem}
+.ivdfin-dep{width:100%;margin-top:8px}
+.ivdfin-terms{display:flex;gap:8px;margin-top:8px}
+.ivdfin-terms button{flex:1;padding:9px 0;border:1px solid #e6e8ec;background:#fff;border-radius:9px;font-weight:600;font-size:.9rem;color:#14181e;cursor:pointer;font-family:inherit}
+.ivdfin-terms button.on{color:#fff}
+.ivdfin-result{display:flex;justify-content:space-between;align-items:baseline;margin:22px 0 6px;padding:16px;background:#f6f7f9;border-radius:12px}
+.ivdfin-result span{font-size:.76rem;text-transform:uppercase;letter-spacing:.06em;color:#616873}
+.ivdfin-monthly{font-weight:700;font-size:1.5rem}
+.ivdfin-note{font-size:.72rem;line-height:1.5;color:#8a8f98;margin:8px 0 16px}
+.ivdfin-cta{display:block;width:100%;text-align:center;padding:13px;border:none;border-radius:10px;font-weight:700;font-size:.95rem;color:#fff;cursor:pointer;font-family:inherit}
+</style>
+<script>
+(function(){
+  if(window.self!==window.top) return;
+  if(window.__ivdFinance) return; window.__ivdFinance=1;
+  function ready(fn){ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',fn); else fn(); }
+  ready(function(){
+    var cars=document.querySelectorAll('[data-block="car"]');
+    if(!cars.length) return;
+    function num(a,d){ var v=parseFloat(a); return isNaN(v)?d:v; }
+    var APR=num(document.body.getAttribute('data-finance-apr'),12.9);
+    var TERM=parseInt(document.body.getAttribute('data-finance-term'),10)||48;
+    var DEP=num(document.body.getAttribute('data-finance-deposit-pct'),10);
+    function fmt(n){ return '\\u00a3'+Math.round(n).toLocaleString('en-GB'); }
+    function parsePrice(t){ var m=(t||'').replace(/[, ]/g,'').match(/(\\d{3,})/); return m?parseInt(m[1],10):0; }
+    function pmt(pr,apr,mo){ var i=apr/100/12; if(i<=0) return pr/mo; return pr*i/(1-Math.pow(1+i,-mo)); }
+    var ov=document.createElement('div'); ov.className='ivdfin-ov';
+    ov.innerHTML='<div class="ivdfin-modal" role="dialog" aria-modal="true"><button class="ivdfin-close" type="button" aria-label="Close">&times;</button><h3 class="ivdfin-title">Finance estimate</h3><p class="ivdfin-car"></p><div class="ivdfin-line"><span>Cash price</span><b class="ivdfin-price"></b></div><label class="ivdfin-ctl">Deposit <b class="ivdfin-dep-val"></b><input class="ivdfin-dep" type="range" min="0" max="50" step="5"></label><div class="ivdfin-ctl"><span>Term (months)</span><span class="ivdfin-terms"><button type="button" data-t="24">24</button><button type="button" data-t="36">36</button><button type="button" data-t="48">48</button><button type="button" data-t="60">60</button></span></div><div class="ivdfin-result"><span>Estimated monthly</span><b class="ivdfin-monthly"></b></div><p class="ivdfin-note">Representative example at <b class="ivdfin-apr"></b>% APR. This is an illustration only, not a quote or an offer of finance. Subject to status &amp; affordability.</p><button class="ivdfin-cta" type="button">Ask us about finance</button></div>';
+    document.body.appendChild(ov);
+    var cur={price:0,dep:DEP,term:TERM,car:null,accent:'#b07f22'};
+    var elPrice=ov.querySelector('.ivdfin-price'),elDepV=ov.querySelector('.ivdfin-dep-val'),elDep=ov.querySelector('.ivdfin-dep'),elMon=ov.querySelector('.ivdfin-monthly'),elCar=ov.querySelector('.ivdfin-car'),elApr=ov.querySelector('.ivdfin-apr'),cta=ov.querySelector('.ivdfin-cta');
+    elApr.textContent=APR;
+    function recalc(){
+      var p=cur.price*(1-cur.dep/100);
+      elPrice.textContent=fmt(cur.price);
+      elDepV.textContent=cur.dep+'% ('+fmt(cur.price*cur.dep/100)+')';
+      elMon.textContent=fmt(pmt(p,APR,cur.term))+'/mo'; elMon.style.color=cur.accent;
+      elCar.style.color=cur.accent; cta.style.background=cur.accent;
+      ov.querySelectorAll('.ivdfin-terms button').forEach(function(b){
+        var on=parseInt(b.getAttribute('data-t'),10)===cur.term;
+        b.classList.toggle('on',on); b.style.background=on?cur.accent:'#fff'; b.style.borderColor=on?cur.accent:'#e6e8ec';
+      });
+    }
+    function open(car,price,accent){
+      cur.price=price;cur.dep=DEP;cur.term=TERM;cur.car=car;cur.accent=accent||'#b07f22';
+      var h=car.querySelector('h3,h2,.car-head h3,.uc-car-head h3');
+      elCar.textContent=h?h.textContent.trim():'';
+      elDep.value=DEP; recalc(); ov.classList.add('on');
+    }
+    function close(){ ov.classList.remove('on'); }
+    ov.addEventListener('click',function(e){ if(e.target===ov) close(); });
+    ov.querySelector('.ivdfin-close').addEventListener('click',close);
+    elDep.addEventListener('input',function(){ cur.dep=parseInt(elDep.value,10); recalc(); });
+    ov.querySelectorAll('.ivdfin-terms button').forEach(function(b){ b.addEventListener('click',function(){ cur.term=parseInt(b.getAttribute('data-t'),10); recalc(); }); });
+    cta.addEventListener('click',function(){ close(); var eb=cur.car&&cur.car.querySelector('.enquire-btn,.uc-enquire-btn'); if(eb){ eb.click(); } });
+    cars.forEach(function(car){
+      if(car.querySelector('.finance,.uc-finance,.ivdfin-row')) return;
+      var priceEl=car.querySelector('.price,.uc-price,[class*="price"]');
+      if(!priceEl) return;
+      var price=parsePrice(priceEl.textContent);
+      if(!price||price<500) return;
+      var accent=getComputedStyle(priceEl).color||'#b07f22';
+      var monthly=pmt(price*(1-DEP/100),APR,TERM);
+      var row=document.createElement('div'); row.className='ivdfin-row';
+      row.innerHTML='<span class="ivdfin-from">From <b>'+fmt(monthly)+'</b>/mo</span><button type="button" class="ivdfin-btn">Finance example \\u203A</button>';
+      row.querySelector('.ivdfin-from b').style.color=accent;
+      row.querySelector('.ivdfin-btn').style.color=accent;
+      var head=priceEl.closest('.car-head,.uc-car-head')||priceEl.parentElement;
+      head.insertAdjacentElement('afterend',row);
+      row.querySelector('.ivdfin-btn').addEventListener('click',function(){ open(car,price,accent); });
+    });
+  });
+})();
+</script>
+"""
+
 
 # ---------------- auth routes ----------------
 @api.post("/auth/login")

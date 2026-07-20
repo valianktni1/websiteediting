@@ -523,3 +523,23 @@ Both self-tested (curl + standalone render screenshot). BUILD bumped to cms-v5.
    donor car's spec numbers until spec editing is added (pre-existing editability gap, not new).
 - BACKLOG still open: apply finance + blank-card assets to the client deliverable ZIPs (RV car-sales,
   Broadfield bikes) if the user wants them live on those specific static sites; modularize server.py/App.js.
+
+## 2026-06-13 (fork) — Finance auto-inject for ANY car site (no per-site file changes)
+User confusion: re-ingesting Ribble Valley didn't show finance, because RV's own files predate the
+feature and re-ingest only re-reads a site's OWN files. FIX (chosen: auto-inject) so no hosting/file
+juggling is ever needed. Build bumped to cms-v6.
+- NEW FINANCE_INJECT (server.py): generic, theme-adaptive finance estimator (CSS+JS, `ivdfin-` classes).
+  Targets [data-block="car"], finds price via `.price,.uc-price,[class*=price]`, injects a
+  "From £X/mo" pill (accent auto-matched to the price element's computed colour so it fits any theme) +
+  a popup calculator (deposit slider, term 24/36/48/60, live monthly, representative-APR disclaimer,
+  "Ask us about finance" → clicks the car's `.enquire-btn/.uc-enquire-btn`). Config via body data-attrs
+  data-finance-apr/term/deposit-pct (defaults 12.9% / 48m / 10%).
+- render_page injects FINANCE_INJECT ONLY when `not for_editor` AND the page contains data-block="car"
+  (so it shows on Preview + published live pages, NOT in the editor canvas). Runtime-only, never stored,
+  publish-clean (data-eid still stripped).
+- IDEMPOTENT: per-car skip `if(car.querySelector('.finance,.uc-finance,.ivdfin-row'))return` + a global
+  `window.__ivdFinance` guard, so sites that already ship finance (car-demo slider.js, used-cars template)
+  do NOT double up. Verified: car-demo dist = 2 own pills + 0 injected (no doubles); RV-style dark card
+  with NO site finance JS = 1 injected pill + working modal (£18,450 → £445/mo @48, £377/mo @60, correct).
+- USER PATH FOR RV: rebuild to cms-v6 → open Ribble Valley → click Preview (or Publish) → finance shows
+  on the live page automatically. Nothing to upload.
