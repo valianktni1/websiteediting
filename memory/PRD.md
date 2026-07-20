@@ -418,3 +418,21 @@ Built a self-contained static page in /app/sites_source/broadfield (index.html +
 - DELIVERABLES: live preview /bf-check/index.html (temp, scrollable in real browser) +
   /api/download/broadfield-motor-co-homepage.zip (drop-in demo to show the client).
 - Phone/contact used: 01254 875970, 07412 707606, Blackburn Lancashire.
+
+## 2026-07-20 (fork) — Importer fix: root-absolute /assets → relative (fixes "massive icons" in editor)
+User reported (on their self-hosted TrueNAS) that ivorydigital renders unstyled ("massive icons") in the
+editor and the Templates tab isn't visible after updating.
+- ROOT CAUSE of massive icons: sites using root-absolute asset refs (src="/assets/..", href="/assets/x.css")
+  bypass the editor's <base href="/api/asset/{slug}/"> and 404 → unstyled canvas.
+- FIX: added _relativize_assets() in server.py, called at top of ingest_page(). Rewrites src="/..",
+  srcset="/..", asset-extension href="/..*.css|js|png|svg|woff..", and url(/..) to relative. Nav links
+  (href="/about/") are LEFT UNTOUCHED (no asset extension). Safe for publishing (pages are flat at site root).
+- VERIFIED (iteration_14.json, 5/5 PASS): ingested ivorydigital renders fully styled in editor (Cormorant
+  Garamond serif, ivory bg, gold accents, small logo, 0 root-absolute asset refs, style.v3.css 200 via
+  /api/asset route). Templates tab present + functional. car-demo regression styled. from-template toggle works.
+- CONCLUSION on user's report: the CODE is correct in preview. Their "can't see Templates" + "massive icons"
+  = STALE Docker frontend build on their self-hosted instance. They must: (1) Save to GitHub, (2) REBUILD the
+  Docker images in Dockge (not just restart) so the new React bundle builds, (3) hard-refresh browser,
+  (4) RE-INGEST ivorydigital after deploy (the /assets fix applies at ingest time; existing DB pages keep old
+  paths until re-imported).
+- NOTE: existing sites already ingested before this fix need re-ingesting to pick up relativized paths.
