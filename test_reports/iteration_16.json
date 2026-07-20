@@ -1,0 +1,36 @@
+{
+  "summary": "Verified BOTH toolbar-declutter and Link-button fixes on ivorydigital 'web-design-seo' portfolio. Toolbar on folio card h3 shows ONLY 6 items: 'Card:' divider + Link, Duplicate, ◀ Move, Move ▶, Delete — Status button correctly absent on folio (blk.hasAttribute('data-status') gate works). Link button opens window.prompt pre-filled with current href; after entering a new URL it PUTs /pages/ivorydigital/web-design-seo/link and the region's href updates (a77: https://wifetobe.org → https://example-new.co.uk, re-opening the prompt confirms new value). Clicking p / img inside the <a class='folio'> card does NOT navigate (pages count stays 1, iframe URL unchanged, capture-phase preventDefault working). Standalone paragraph (outside any card) shows compact element-only toolbar: ['↑ Up','↓ Down','Duplicate','Delete'] — NO 'Card:' divider, NO Link button. Regression on car-demo/cars page: toolbar on car h3 = ['Card:','Duplicate','◀ Move','Move ▶','Delete','Status'] — Status button present because <article data-block='car' data-status='...'>. FOUND & FIXED backend bug: PUT /pages/{site}/{page}/link returned HTTP 400 for folio card links because update_link required r['type']=='text' but assign_regions writes type='link' for card-wrapping <a> regions — updated validation to accept both types (see updated_files).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "toolbar_declutter_folio": "PASS — toolbar items on folio h3 click: [Card:, Link, Duplicate, ◀ Move, Move ▶, Delete] (6 items grouped in one Card: group, NO element-group because <a> is contenteditable-blocked, no Status). Matches spec exactly.",
+    "link_button_prompt_and_save": "PASS — click Link → window.prompt appears with message 'Link URL (where this button/link goes):' and default value = current href (https://wifetobe.org). Accepting a new URL PUTs /pages/ivorydigital/web-design-seo/link with 200, iframe reloads, and a.folio[data-eid=a77].href updates to new URL. Re-selecting card and clicking Link again shows the NEW url as prompt default (verified default='https://example-new.co.uk' on 2nd open).",
+    "no_navigation_on_card_click": "PASS — clicking a.folio p, img, and Link button all keep pages.count=1 and iframe URL unchanged. capture-phase document click preventDefault active.",
+    "regression_standalone_paragraph": "PASS — click on a plain <p> outside any card → toolbar shows only element actions ['↑ Up','↓ Down','Duplicate','Delete']. No Card: divider. Text remains contenteditable.",
+    "regression_car_demo_status": "PASS — car-demo/cars page has 2 <article data-block='car' data-status=''> cards. Clicking a car h3 opens toolbar ['Card:','Duplicate','◀ Move','Move ▶','Delete','Status']. Status button present, no Link (correct — car card is not <a>).",
+    "cleanup": "PASS — a77 href restored to original https://wifetobe.org via second Link edit. Final state matches original."
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fixed: /app/backend/server.py L713-720 update_link endpoint was rejecting new type='link' regions (card-wrapping <a>) with HTTP 400 'That element isn't a link or button'. Root cause: validation required r['type']=='text' but assign_regions (L259) writes type='link' for non-leaf <a href>. Updated to accept both types and only add the redundant 'link:True' flag when the region is a text-type <a>/<button>.",
+    "EDITOR_INJECT (server.py L548-590) select() is now clearly grouped: element block first, then a 'Card:' divider (span.ed-div) and card block-btn buttons. Status is gated by blk.hasAttribute('data-status') (L584) — correctly excludes folio cards (data-block='folio' with no data-status) and includes car cards.",
+    "Contenteditable is intentionally NOT set on card-wrapping <a> (L602-607) — good, prevents typing into the wrapping anchor while still allowing selection.",
+    "Nit: on folio cards the element-only group section is empty (no Up/Down/Duplicate/Delete printed) because the wrapping <a> is a card and the h3/p children fall into blk branch — final rendered toolbar only shows the Card: group. This is intentional and matches the request. No divider is rendered when the element group is empty because Card: divider has :first-child rule to hide its left border."
+  ],
+  "updated_files": ["/app/backend/server.py"],
+  "success_rate": {"backend": "not-run (frontend-only per request; backend endpoint bug fixed and verified via UI round-trip)", "frontend": "100% (6/6 review items PASS)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 — worked.",
+  "seed_data_creation": "Temporarily changed a77 href to https://example-new.co.uk during test, then restored to https://wifetobe.org. Final state = pristine.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Editor iframe = [data-testid='page-frame']. Toolbar #ed-tb inside iframe has no data-testid — locate buttons via frame.locator('#ed-tb button', has_text=...). Card block buttons have class ed-block-btn; element buttons don't. window.prompt from parent handles Link edits; page.on('dialog', accept(new_url)). After op or link PUT, iframe reloads (setNonce), so re-acquire content_frame(). Site switcher [data-testid='site-switcher'] is only present on All-pages view, not while editing a page — use 'All pages' back link before switching sites.",
+  "rca of the issue": "Bug 1 (toolbar messy/confusing 10 buttons): Fixed in EDITOR_INJECT select() by splitting into element-group + Card: group with divider (span.ed-div) and gating Status on data-status attribute. Verified: folio h3 shows only Card: group (6 items, no Status); standalone p shows only element group (4 items, no Card:). Bug 2 (no Link button on card): Fixed by (a) EDITOR_INJECT adding a Link block-btn when blk.tagName==='A' (L576-578), and (b) assign_regions creating type='link' regions for non-leaf <a href>. BUT the update_link endpoint validator was still requiring the legacy 'text' type — caused HTTP 400 on save. Fixed the endpoint to accept type in ('text','link'). Full round-trip now works: click card text → Card:Link button → prompt → save → href updates in DOM and persists across iframe reload."
+}

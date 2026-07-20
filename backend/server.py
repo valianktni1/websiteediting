@@ -250,6 +250,13 @@ def assign_regions(body):
         eid = f"i{n}"; n += 1
         img["data-eid"] = eid
         regions[eid] = {"type": "image", "value": img.get("src", ""), "alt": img.get("alt", "")}
+    # card / image links: <a href> that wrap other elements (not leaf text links) — make editable
+    for a in body.find_all("a"):
+        if a.has_attr("data-eid") or not a.has_attr("href"):
+            continue
+        eid = f"a{n}"; n += 1
+        a["data-eid"] = eid
+        regions[eid] = {"type": "link", "href": a.get("href", "")}
     return regions
 
 def _tag_repeating_blocks(soup):
@@ -478,6 +485,9 @@ def render_page(page, for_editor=False, asset_base=""):
                 el.insert_after(fc)
             if not for_editor and el.has_attr("data-caption"):
                 del el["data-caption"]
+        elif r["type"]=="link":
+            if el.name in ("a","button"):
+                el["href"] = r.get("href","")
         if not for_editor and el.has_attr("data-eid"):
             del el["data-eid"]
     inner = bodyel.decode_contents()
@@ -503,11 +513,13 @@ EDITOR_INJECT = """
 img[data-eid]{cursor:grab}
 img[data-eid].ed-drag{opacity:.4}
 img[data-eid].ed-over{outline:3px solid #A78C46 !important;outline-offset:2px}
-#ed-tb{position:absolute;z-index:2147483000;display:none;gap:4px;background:#12151b;border:1px solid #A78C46;border-radius:8px;padding:5px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-family:Arial,sans-serif}
+#ed-tb{position:absolute;z-index:2147483000;display:none;flex-wrap:wrap;align-items:center;gap:4px;max-width:520px;background:#12151b;border:1px solid #A78C46;border-radius:8px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-family:Arial,sans-serif}
 #ed-tb button{background:#232833;color:#e9ecf1;border:1px solid #3a4150;border-radius:5px;padding:5px 9px;font-size:12px;line-height:1;cursor:pointer;white-space:nowrap}
 #ed-tb button:hover{background:#A78C46;color:#161616;border-color:#A78C46}
 #ed-tb button.ed-block-btn{background:#3a2f14;color:#e9d9a8;border-color:#A78C46}
 #ed-tb button.ed-block-btn:hover{background:#A78C46;color:#161616}
+#ed-tb .ed-div{color:#A78C46;font-size:10px;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;padding:0 6px 0 8px;border-left:1px solid #3a4150;margin-left:4px;font-family:Arial,sans-serif}
+#ed-tb .ed-div:first-child{border-left:none;margin-left:0}
 </style>
 <script>
 document.addEventListener('DOMContentLoaded',function(){
@@ -539,30 +551,39 @@ document.addEventListener('DOMContentLoaded',function(){
     var eid=el.getAttribute('data-eid');
     var isImg=el.tagName==='IMG';
     var isLink=el.tagName==='A'||el.tagName==='BUTTON';
+    var blk=el.closest ? el.closest('[data-block]') : null;
     tb.innerHTML='';
+    // --- this element ---
     if(isImg){
       tb.appendChild(mk('Replace',function(){post({t:'image',eid:eid,ar:_ar(el)});}));
       tb.appendChild(mk('+ Add photos',function(){post({t:'bulk-image',eid:eid,ar:_ar(el)});}));
       tb.appendChild(mk('Alt text',function(){post({t:'alt',eid:eid,alt:el.getAttribute('alt')||''});}));
       tb.appendChild(mk('Caption',function(){post({t:'caption',eid:eid,caption:el.getAttribute('data-caption')||''});}));
     }
-    if(isLink){
+    if(isLink && !blk){
       tb.appendChild(mk('Link',function(){post({t:'link',eid:eid,href:el.getAttribute('href')||''});}));
     }
-    tb.appendChild(mk('↑ Up',function(){post({t:'op',op:'move-up',eid:eid});}));
-    tb.appendChild(mk('↓ Down',function(){post({t:'op',op:'move-down',eid:eid});}));
-    tb.appendChild(mk('Duplicate',function(){post({t:'op',op:'duplicate',eid:eid});}));
-    tb.appendChild(mk('+ Button',function(){post({t:'op',op:'add-button',eid:eid});}));
-    tb.appendChild(mk('Delete',function(){post({t:'op',op:'delete',eid:eid});}));
-    var blk = el.closest ? el.closest('[data-block]') : null;
+    if(!blk){
+      tb.appendChild(mk('\u2191 Up',function(){post({t:'op',op:'move-up',eid:eid});}));
+      tb.appendChild(mk('\u2193 Down',function(){post({t:'op',op:'move-down',eid:eid});}));
+      tb.appendChild(mk('Duplicate',function(){post({t:'op',op:'duplicate',eid:eid});}));
+      if(isLink) tb.appendChild(mk('+ Button',function(){post({t:'op',op:'add-button',eid:eid});}));
+      tb.appendChild(mk('Delete',function(){post({t:'op',op:'delete',eid:eid});}));
+    }
+    // --- whole card group ---
     if(blk){
-      var bn = blk.getAttribute('data-block'); bn = (bn && bn.trim()) ? bn.trim() : 'block';
-      var b1=mk('Duplicate '+bn,function(){post({t:'op',op:'duplicate-block',eid:eid});}); b1.className='ed-block-btn';
-      var b2=mk('Delete '+bn,function(){post({t:'op',op:'delete-block',eid:eid});}); b2.className='ed-block-btn';
-      var b3=mk('Status',function(){post({t:'status',eid:eid});}); b3.className='ed-block-btn';
+      var lab=document.createElement('span'); lab.className='ed-div'; lab.textContent='Card:'; tb.appendChild(lab);
+      if(blk.tagName==='A' && blk.getAttribute('data-eid')){
+        var lk=mk('Link',function(){post({t:'link',eid:blk.getAttribute('data-eid'),href:blk.getAttribute('href')||''});}); lk.className='ed-block-btn'; tb.appendChild(lk);
+      }
+      var b1=mk('Duplicate',function(){post({t:'op',op:'duplicate-block',eid:eid});}); b1.className='ed-block-btn';
       var b4=mk('\u25C0 Move',function(){post({t:'op',op:'move-block-up',eid:eid});}); b4.className='ed-block-btn';
       var b5=mk('Move \u25B6',function(){post({t:'op',op:'move-block-down',eid:eid});}); b5.className='ed-block-btn';
-      tb.appendChild(b1); tb.appendChild(b2); tb.appendChild(b3); tb.appendChild(b4); tb.appendChild(b5);
+      var b2=mk('Delete',function(){post({t:'op',op:'delete-block',eid:eid});}); b2.className='ed-block-btn';
+      tb.appendChild(b1); tb.appendChild(b4); tb.appendChild(b5); tb.appendChild(b2);
+      if(blk.hasAttribute('data-status')){
+        var b3=mk('Status',function(){post({t:'status',eid:eid});}); b3.className='ed-block-btn'; tb.appendChild(b3);
+      }
     }
     tb.style.display='flex';
     place(el);
@@ -578,10 +599,13 @@ document.addEventListener('DOMContentLoaded',function(){
       el.addEventListener('dragleave',function(){el.classList.remove('ed-over');});
       el.addEventListener('drop',function(e){e.preventDefault();el.classList.remove('ed-over');if(dragEid&&dragEid!==eid){post({t:'op',op:'swap-image',eid:dragEid,ref:eid});}dragEid=null;});
     } else {
-      el.setAttribute('contenteditable','true');
-      el.addEventListener('focus',function(){select(el);});
+      var isCardLink = el.tagName==='A' && el.children && el.children.length>0;
+      if(!isCardLink){
+        el.setAttribute('contenteditable','true');
+        el.addEventListener('focus',function(){select(el);});
+        el.addEventListener('blur',function(){ post({t:'text',eid:eid,value:el.innerHTML}); });
+      }
       el.addEventListener('click',function(e){ if(el.tagName==='A'||el.tagName==='BUTTON'){e.preventDefault();} select(el); });
-      el.addEventListener('blur',function(){ post({t:'text',eid:eid,value:el.innerHTML}); });
     }
   });
   document.addEventListener('scroll',function(){ if(sel && tb.style.display!=='none') place(sel); },true);
@@ -687,11 +711,14 @@ async def update_link(slug_site: str, slug: str, body: LinkUpdate, u=Depends(cur
     r = p.get("regions",{}).get(body.eid)
     if not r: raise HTTPException(400,"Unknown region")
     el = BeautifulSoup(p["template"], "lxml").find(attrs={"data-eid":body.eid})
-    if r.get("type") != "text" or not el or el.name not in ("a","button"):
+    if not el or el.name not in ("a","button") or r.get("type") not in ("text","link"):
         raise HTTPException(400,"That element isn't a link or button")
     await maybe_auto_snapshot(slug_site)
     await push_undo(slug_site, slug)
-    await db.pages.update_one({"_id":p["_id"]},{"$set":{f"regions.{body.eid}.href":body.href,f"regions.{body.eid}.link":True}})
+    update = {f"regions.{body.eid}.href":body.href}
+    if r.get("type") == "text":
+        update[f"regions.{body.eid}.link"] = True
+    await db.pages.update_one({"_id":p["_id"]},{"$set":update})
     return {"ok":True}
 
 @api.put("/pages/{slug_site}/{slug}/alt")
