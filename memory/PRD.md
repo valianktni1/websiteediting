@@ -484,3 +484,18 @@ editor and the Templates tab isn't visible after updating.
   (4) RE-INGEST ivorydigital after deploy (the /assets fix applies at ingest time; existing DB pages keep old
   paths until re-imported).
 - NOTE: existing sites already ingested before this fix need re-ingesting to pick up relativized paths.
+
+## 2026-06-13 (fork) — ROOT CAUSE of recurring "can't see new features" = BuildKit git-cache
+- User (correctly) runs: down → `build --no-cache backend frontend` → `up -d`, and re-ingests. Yet
+  features kept "missing". Verified GitHub main HAS all latest code (every marker matched workspace),
+  so "Save to GitHub" works fine.
+- REAL ROOT CAUSE: their compose builds from a GIT URL context (github…#main:backend / #main:frontend).
+  Docker BuildKit caches git sources by commit SHA and `--no-cache` does NOT clear the git-source cache,
+  so builds re-used a stale clone. Confirmed via docs/issues (buildx#2924, SO 77670224).
+- FIX GIVEN TO USER (foolproof rebuild): add `docker builder prune -af` BEFORE build (+`--force-recreate`).
+- PERMANENT VISIBILITY FIX (shipped): BUILD_VERSION bumped to 2026-06-13-cms-v5; NEW frontend/src/version.js
+  (UI_BUILD, baked into the React bundle at build time); Footer now fetches /api/version and displays
+  "Build · UI <x> · API <y>" (data-testid build-stamp) — turns RED "⚠️ mismatch — rebuild needed" if the UI
+  and API builds differ, so a stale container is instantly visible. Verified: footer shows matching v5 in preview.
+- USER WORKFLOW GOING FORWARD: after rebuild, glance at the login/dashboard footer. If it doesn't read the
+  expected build (or shows a mismatch), the corresponding container is stale → prune + rebuild that service.

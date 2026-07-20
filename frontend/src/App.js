@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, createContext, useContext, useCallback } from "react";
 import axios from "axios";
 import Cropper from "react-easy-crop";
+import { UI_BUILD } from "./version";
 import "./App.css";
 
 function loadImg(src) {
@@ -51,9 +52,21 @@ function AuthProvider({ children }) {
 }
 
 function Footer() {
+  const [api, setApi] = useState("…");
+  useEffect(() => {
+    axios.get(`${API}/version`).then(r => setApi(r.data.version)).catch(() => setApi("offline"));
+  }, []);
+  const stale = api !== "…" && api !== "offline" && api !== UI_BUILD;
   return (
     <footer className="site-footer" data-testid="app-footer">
       Hosted &amp; powered by <b>Ivory Digital</b> · Weddings by Mark
+      <span
+        data-testid="build-stamp"
+        title={stale ? "UI and API builds differ — rebuild the stale container" : "Running build"}
+        style={{ display: "block", marginTop: 6, fontSize: 11, opacity: 0.7, color: stale ? "#c0392b" : "inherit" }}
+      >
+        Build · UI {UI_BUILD} · API {api}{stale ? " ⚠️ mismatch — rebuild needed" : ""}
+      </span>
     </footer>
   );
 }
