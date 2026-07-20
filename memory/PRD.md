@@ -400,3 +400,21 @@ Transform script /tmp/ivory_ph/transform.py (regex-only, NOT bs4 — avoids lowe
   (logo, gold accents, fonts, cards). All 22 pages valid (header+footer+</html>), 0 leftover root-absolute assets.
 - DELIVERABLE: /api/download/ivorydigital-editor-ready.zip (50 files, drop-in replacement for public_html).
   NOTE: accent auto-detect won't fire (palette var is --gold #A78C46 not --accent) → set #A78C46 in Brand panel.
+
+## 2026-07-20 (fork) — Broadfield Motor Co: ultra-modern demo front page (bikes-first)
+User asked for an "ultra modern but elegant" front page for Broadfield Motor Company (Alfa Romeo used-car
+specialist, Blackburn, now expanding into used MOTORBIKE sales) with EQUAL/MORE emphasis on motorbikes.
+Built a self-contained static page in /app/sites_source/broadfield (index.html + assets/style.css + app.js).
+- Design (via design_agent, /app/design_guidelines.json): Obsidian black #050505 + Rosso Corsa #C82829;
+  fonts Oswald (condensed headings) + Playfair Display italic (heritage) + Manrope (body). Sections: glass
+  sticky nav w/ red phone CTA (01254 875970), 60/40 HERO split (bikes 60% left / Alfa 40% right, hover-zoom),
+  red Playfair marquee, BIKES bento grid (4 cards, data-block, Sold/Reserved badges), Alfa editorial split,
+  servicing (dark workshop bg + 3 cards), red trust strip, VISIT contact + enquiry form, big "LET'S TALK" footer.
+- Editor-ready: data-block on all repeating cards; images+text editable; relative asset paths.
+- Real imagery via image_selector (bikes/Alfa/workshop) — all 8 image URLs verified 200.
+- Verified: hero renders pixel-perfect to brief (screenshot); CSS valid (161/161 braces); all 7 sections
+  present + well-formed. NOTE: screenshot tool only returns top-of-page frame, so lower sections verified
+  structurally + via CSS validity rather than visually.
+- DELIVERABLES: live preview /bf-check/index.html (temp, scrollable in real browser) +
+  /api/download/broadfield-motor-co-homepage.zip (drop-in demo to show the client).
+- Phone/contact used: 01254 875970, 07412 707606, Blackburn Lancashire.
