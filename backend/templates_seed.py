@@ -90,6 +90,28 @@ USED_CARS_CSS = """
 .uc-enq-form input,.uc-enq-form textarea{font-family:inherit;font-size:.95rem;color:#14181e;border:1px solid #e6e8ec;border-radius:9px;padding:10px 12px}
 .uc-enq-form input:focus,.uc-enq-form textarea:focus{outline:none;border-color:var(--brand-accent,#d7a24b)}
 
+.uc-finance{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0 4px;padding:12px 14px;background:color-mix(in srgb,var(--acc) 8%,#fff);border:1px solid color-mix(in srgb,var(--acc) 24%,#fff);border-radius:12px}
+.uc-finance-from{font-size:.92rem;color:var(--muted)}
+.uc-finance-from b{font-family:var(--hf);font-weight:700;font-size:1.1rem;color:var(--acc)}
+.uc-finance-btn{background:none;border:none;color:var(--acc);font-family:var(--hf);font-weight:600;font-size:.85rem;cursor:pointer;padding:4px 2px}
+.uc-fin-overlay{position:fixed;inset:0;background:rgba(8,9,11,.72);display:none;align-items:center;justify-content:center;z-index:210;padding:20px}
+.uc-fin-overlay.on{display:flex}
+.uc-fin-modal{background:#fff;color:#14181e;border-radius:16px;max-width:420px;width:100%;padding:28px;position:relative;box-shadow:0 30px 80px -30px rgba(0,0,0,.6)}
+.uc-fin-close{position:absolute;top:12px;right:16px;background:none;border:none;font-size:1.8rem;line-height:1;color:#8a8f98;cursor:pointer}
+.uc-fin-title{font-family:'Sora',sans-serif;font-size:1.3rem;margin:0 0 4px}
+.uc-fin-car{color:var(--brand-accent,#d7a24b);font-weight:600;font-size:.9rem;margin:0 0 18px}
+.uc-fin-line{display:flex;justify-content:space-between;font-size:.95rem;padding:8px 0;border-bottom:1px solid #eef0f3}
+.uc-fin-ctl{display:block;font-size:.78rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:#616873;margin:16px 0 6px}
+.uc-fin-ctl b{color:#14181e;text-transform:none;letter-spacing:0;font-size:.9rem}
+.uc-fin-dep{width:100%;accent-color:var(--brand-accent,#d7a24b);margin-top:8px}
+.uc-fin-terms{display:flex;gap:8px;margin-top:8px}
+.uc-fin-terms button{flex:1;padding:9px 0;border:1px solid #e6e8ec;background:#fff;border-radius:9px;font-family:'Sora',sans-serif;font-weight:600;font-size:.9rem;color:#14181e;cursor:pointer}
+.uc-fin-terms button.on,.uc-fin-terms button:hover{background:var(--brand-accent,#d7a24b);color:#fff;border-color:var(--brand-accent,#d7a24b)}
+.uc-fin-result{display:flex;justify-content:space-between;align-items:baseline;margin:22px 0 6px;padding:16px;background:color-mix(in srgb,var(--acc) 8%,#fff);border:1px solid color-mix(in srgb,var(--acc) 24%,#fff);border-radius:12px}
+.uc-fin-result span{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:#616873}
+.uc-fin-monthly{font-family:'Sora',sans-serif;font-weight:700;font-size:1.5rem;color:var(--acc)}
+.uc-fin-note{font-size:.72rem;line-height:1.5;color:#8a8f98;margin:8px 0 16px}
+
 @media(max-width:860px){
   .uc-tpl .uc-hero-grid{grid-template-columns:1fr;gap:32px}
   .uc-tpl .uc-why-grid{grid-template-columns:1fr 1fr}
@@ -130,7 +152,32 @@ USED_CARS_JS = """
     btns.forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();var card=b.closest('.uc-car');var h=card&&card.querySelector('.uc-car-head h3');open(h?h.textContent.trim():'');});});
     ov.querySelector('.uc-enq-form').addEventListener('submit',function(e){e.preventDefault();var f=e.target;var subj='Car enquiry: '+(carName||'used car');var body='Car: '+carName+'\\n\\nName: '+f.name.value+'\\nPhone: '+f.phone.value+'\\nEmail: '+f.email.value+'\\n\\n'+f.message.value;window.location.href='mailto:'+email+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body);close();});
   }
-  function initAll(){var root=document.querySelector('.uc-tpl');if(!root)return;root.querySelectorAll('.uc-slider').forEach(initSlider);initEnquiry(root);}
+  function fmtMoney(n){return '\\u00a3'+Math.round(n).toLocaleString('en-GB');}
+  function parsePrice(t){var m=(t||'').replace(/[, ]/g,'').match(/(\\d{3,})/);return m?parseInt(m[1],10):0;}
+  function pmt(pr,apr,mo){var i=apr/100/12;if(i<=0)return pr/mo;return pr*i/(1-Math.pow(1+i,-mo));}
+  function initFinance(root){
+    if(window.self!==window.top)return;
+    var cars=root.querySelectorAll('.uc-car');if(!cars.length)return;
+    var APR=parseFloat(root.getAttribute('data-finance-apr'))||12.9;
+    var TERM=parseInt(root.getAttribute('data-finance-term'),10)||48;
+    var DEP=parseFloat(root.getAttribute('data-finance-deposit-pct'));if(isNaN(DEP))DEP=10;
+    var ov=document.createElement('div');ov.className='uc-fin-overlay';
+    ov.innerHTML='<div class="uc-fin-modal" role="dialog" aria-modal="true"><button class="uc-fin-close" type="button" aria-label="Close">&times;</button><h3 class="uc-fin-title">Finance estimate</h3><p class="uc-fin-car"></p><div class="uc-fin-line"><span>Cash price</span><b class="uc-fin-price"></b></div><label class="uc-fin-ctl">Deposit <b class="uc-fin-dep-val"></b><input class="uc-fin-dep" type="range" min="0" max="50" step="5"></label><div class="uc-fin-ctl"><span>Term</span><span class="uc-fin-terms"><button type="button" data-t="24">24</button><button type="button" data-t="36">36</button><button type="button" data-t="48">48</button><button type="button" data-t="60">60</button></span></div><div class="uc-fin-result"><span>Estimated monthly</span><b class="uc-fin-monthly"></b></div><p class="uc-fin-note">Representative example at <b class="uc-fin-apr"></b>% APR. Illustration only, not a quote or an offer of finance. Subject to status &amp; affordability.</p><button class="uc-btn uc-btn-solid uc-fin-enquire" type="button" style="width:100%">Ask us about finance</button></div>';
+    document.body.appendChild(ov);
+    var cur={price:0,dep:DEP,term:TERM,car:null};
+    var elPrice=ov.querySelector('.uc-fin-price'),elDepV=ov.querySelector('.uc-fin-dep-val'),elDep=ov.querySelector('.uc-fin-dep'),elMon=ov.querySelector('.uc-fin-monthly'),elCar=ov.querySelector('.uc-fin-car'),elApr=ov.querySelector('.uc-fin-apr');
+    elApr.textContent=APR;
+    function recalc(){var p=cur.price*(1-cur.dep/100);elPrice.textContent=fmtMoney(cur.price);elDepV.textContent=cur.dep+'% ('+fmtMoney(cur.price*cur.dep/100)+')';elMon.textContent=fmtMoney(pmt(p,APR,cur.term))+'/mo';ov.querySelectorAll('.uc-fin-terms button').forEach(function(b){b.classList.toggle('on',parseInt(b.getAttribute('data-t'),10)===cur.term);});}
+    function open(car,price){cur.price=price;cur.dep=DEP;cur.term=TERM;cur.car=car;var h=car.querySelector('.uc-car-head h3');elCar.textContent=h?h.textContent.trim():'';elDep.value=DEP;recalc();ov.classList.add('on');}
+    function close(){ov.classList.remove('on');}
+    ov.addEventListener('click',function(e){if(e.target===ov)close();});
+    ov.querySelector('.uc-fin-close').addEventListener('click',close);
+    elDep.addEventListener('input',function(){cur.dep=parseInt(elDep.value,10);recalc();});
+    ov.querySelectorAll('.uc-fin-terms button').forEach(function(b){b.addEventListener('click',function(){cur.term=parseInt(b.getAttribute('data-t'),10);recalc();});});
+    ov.querySelector('.uc-fin-enquire').addEventListener('click',function(){close();var eb=cur.car&&cur.car.querySelector('.uc-enquire-btn');if(eb)eb.click();});
+    cars.forEach(function(car){var priceEl=car.querySelector('.uc-price');if(!priceEl)return;var price=parsePrice(priceEl.textContent);if(!price||price<500)return;var monthly=pmt(price*(1-DEP/100),APR,TERM);var fin=document.createElement('div');fin.className='uc-finance';fin.innerHTML='<span class="uc-finance-from">From <b>'+fmtMoney(monthly)+'</b>/mo</span><button type="button" class="uc-finance-btn">Finance example &rsaquo;</button>';var head=car.querySelector('.uc-car-head');if(head)head.insertAdjacentElement('afterend',fin);else priceEl.insertAdjacentElement('afterend',fin);fin.querySelector('.uc-finance-btn').addEventListener('click',function(){open(car,price);});});
+  }
+  function initAll(){var root=document.querySelector('.uc-tpl');if(!root)return;root.querySelectorAll('.uc-slider').forEach(initSlider);initEnquiry(root);initFinance(root);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initAll);else initAll();
 })();
 """

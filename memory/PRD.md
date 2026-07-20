@@ -499,3 +499,27 @@ editor and the Templates tab isn't visible after updating.
   and API builds differ, so a stale container is instantly visible. Verified: footer shows matching v5 in preview.
 - USER WORKFLOW GOING FORWARD: after rebuild, glance at the login/dashboard footer. If it doesn't read the
   expected build (or shows a mismatch), the corresponding container is stale → prune + rebuild that service.
+
+## 2026-06-13 (fork) — Finance Calculator + "+ Blank card" (car templates)
+Both self-tested (curl + standalone render screenshot). BUILD bumped to cms-v5.
+1. FINANCE CALCULATOR (buyer-facing, static, no backend/AI): initFinance() added to
+   /app/sites_source/car-demo/assets/slider.js (+ CSS in style.css) AND to the "used-cars" page
+   template (templates_seed.py USED_CARS_JS/CSS, refreshed on startup via $set upsert). Parses each
+   car's price, injects a "From £X/mo" pill under the car head + a "Finance example ›" button that
+   opens a shared popup: cash price, deposit range slider (default 10%), term buttons 24/36/48/60
+   (default 48), live estimated monthly, representative-APR disclaimer (default 12.9%), and an
+   "Ask us about finance" CTA that hands off to the existing enquiry modal. Configurable via body/root
+   data-attrs: data-finance-apr / data-finance-term / data-finance-deposit-pct. PURELY RUNTIME — never
+   stored, so it covers every car incl. cloned/blank ones; publish-clean. GUARDED with
+   `if(window.self!==window.top)return` so it does NOT run inside the CMS editor iframe (keeps
+   click-to-edit clean). Verified: £21,995 → £530/mo @48m/10%/12.9% (correct amortised PMT).
+2. "+ BLANK CARD": new page_op op `add-blank-block`. Clones the selected [data-block] card, then
+   (a) collapses each image gallery to ONE placeholder slide (BLANK_IMG grey "+ Add photo" SVG data-URI),
+   (b) blanks editable text (h/p/li) to "Edit" so regions stay clickable, (c) keeps <a>/<button> CTA
+   labels, (d) clears data-status. Editor toolbar gains a gold "+ Blank card" button in the Card group
+   (EDITOR_INJECT). Frontend flash "Blank card added — click to fill it in". Verified via curl on
+   car-demo: 2→3 cars, middle card = 1 placeholder img + 7 "Edit" fields + blank status; CTA preserved.
+   NOTE: spec values (span/b) aren't editable regions in these templates, so a blank card keeps the
+   donor car's spec numbers until spec editing is added (pre-existing editability gap, not new).
+- BACKLOG still open: apply finance + blank-card assets to the client deliverable ZIPs (RV car-sales,
+  Broadfield bikes) if the user wants them live on those specific static sites; modularize server.py/App.js.
