@@ -418,6 +418,9 @@ Built a self-contained static page in /app/sites_source/broadfield (index.html +
 - DELIVERABLES: live preview /bf-check/index.html (temp, scrollable in real browser) +
   /api/download/broadfield-motor-co-homepage.zip (drop-in demo to show the client).
 - Phone/contact used: 01254 875970, 07412 707606, Blackburn Lancashire.
+- 2026-07-20: replaced text wordmark with user's uploaded logo (assets/logo.png, whitespace trimmed +
+  white→transparent via Pillow, 463x500, 132KB). Displayed white on dark nav/footer via CSS filter:invert(1).
+  Logo is now an <img> (nav + footer) so it's click-to-replace in the editor. ZIP re-packaged.
 
 ## 2026-07-20 (fork) — Importer fix: root-absolute /assets → relative (fixes "massive icons" in editor)
 User reported (on their self-hosted TrueNAS) that ivorydigital renders unstyled ("massive icons") in the
