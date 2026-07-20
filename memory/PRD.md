@@ -652,7 +652,25 @@ added a new .html → re-ingest added it (added:1) while preserving edits.
    NOTE: applies to newly-imported pages; existing pages keep their edits (edit-preserving re-ingest) so to
    gain wrapping on an old page, re-import it fresh (delete + re-add).
 - ACCESS CONTROL: user chose to DEFER (leave for now).
-- NEXT (user's idea, agreed): a superadmin "New site from a design/HTML" button — scaffold a new client
-  site from ready-made HTML files, create the client user, set SFTP, publish to Hostinger. Fits existing
-  SITES_DIR + ingest + publish flow. To build next.
 - USER ACTION: rebuild to cms-v12 → new sites are near-fully editable + "Add:" appears on every element.
+
+## 2026-06-13 (fork) — NEW SITE FROM A DESIGN (superadmin ZIP upload). Build cms-v13.
+Superadmin can spin up a whole client site from a finished design ZIP in one flow — no SFTP pull needed.
+- BACKEND: POST /api/sites/create-from-design (require_super, multipart). Fields: file(zip), slug, name,
+  domain, client_email, client_password, sftp_host/port/username/password/remote_path (all optional
+  except file+slug). _extract_design_zip() safely unpacks (zip-slip guard, 5000-file/500MB budget, skips
+  __MACOSX/dotfiles) and FLATTENS a single wrapper folder so index.html lands at the site root. Then
+  ingest_site (recurses subfolders e.g. car-sales/index.html), sets name/domain, optional sftp conf,
+  optional scoped editor user (role=editor, site_id=slug). Rolls back (rm dir + delete site doc) on any
+  failure incl. "no .html found". Does NOT auto-publish (user reviews then hits Publish).
+- PHP passthrough: .php (and all non-.html) files copy through untouched via build_dist (ignore *.html
+  only) → they publish as-is over SFTP but aren't click-to-edit (as intended). Verified contact.php in dist.
+- FRONTEND: Admin ▸ Sites tab, superadmin-only "New site from a design" card (above the SFTP-pull "Add a
+  new site"). Collapsed → "Create a site from a design ZIP" button; expanded form (data-testid design-*)
+  with file picker, name/slug (auto-slug from name), locked domain, optional client login, optional SFTP.
+  Uploads as FormData (180s timeout), shows result inline, refreshes site list.
+- VERIFIED end-to-end via curl: 2-page zip (home + car-sales subfolder + php + assets) → created, both
+  pages ingested, client user created & scoped, domain locked; PHP present in preview dist; error cases
+  (duplicate slug / non-zip / no-html) all 400 with cleanup (dir + DB doc removed). Frontend form renders +
+  opens (screenshot). Test data purged after.
+- USER ACTION: rebuild to cms-v13 → Admin ▸ Sites ▸ "Create a site from a design ZIP".

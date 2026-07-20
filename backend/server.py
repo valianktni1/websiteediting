@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v12"
+BUILD_VERSION = "2026-06-13-cms-v13"
 
 @api.get("/version")
 async def version():
@@ -1673,6 +1673,87 @@ async def add_status(job_id: str, u=Depends(require_super)):
     if not j: raise HTTPException(404, "Job not found")
     return {"state": j["state"], "message": j["message"], "pulled": j.get("pulled", 0),
             "ingested": j.get("ingested", 0), "slug": j.get("slug")}
+
+def _extract_design_zip(zip_bytes, dest):
+    """Safely unpack an uploaded site-design zip into dest. Guards against zip-slip and
+    oversized archives, skips Mac/hidden cruft, and flattens a single wrapper folder
+    (e.g. mysite.zip -> mysite/index.html) so index.html lands at the site root."""
+    try:
+        zf = zipfile.ZipFile(_io.BytesIO(zip_bytes))
+    except zipfile.BadZipFile:
+        raise HTTPException(400, "That file isn't a valid .zip. Export your design as a ZIP and try again.")
+    files = 0; total = 0
+    dest_abs = os.path.abspath(dest)
+    for info in zf.infolist():
+        name = info.filename
+        if info.is_dir(): continue
+        parts = name.replace("\\", "/").split("/")
+        if any(p in ("__MACOSX",) or p.startswith(".") for p in parts): continue
+        target = os.path.abspath(os.path.join(dest, name))
+        if not (target == dest_abs or target.startswith(dest_abs + os.sep)):
+            raise HTTPException(400, "The zip contains an unsafe file path. Please re-export it.")
+        files += 1; total += info.file_size
+        if files > 5000 or total > 500 * 1024 * 1024:
+            raise HTTPException(400, "That design is too large (over 5000 files or 500MB).")
+        os.makedirs(os.path.dirname(target) or dest, exist_ok=True)
+        with zf.open(info) as src, open(target, "wb") as out:
+            shutil.copyfileobj(src, out)
+    # flatten a single wrapper directory if there's no top-level html
+    entries = [e for e in os.listdir(dest) if not e.startswith(".")]
+    top_html = glob.glob(os.path.join(dest, "*.html"))
+    if not top_html and len(entries) == 1 and os.path.isdir(os.path.join(dest, entries[0])):
+        inner = os.path.join(dest, entries[0])
+        for e in os.listdir(inner):
+            shutil.move(os.path.join(inner, e), os.path.join(dest, e))
+        shutil.rmtree(inner, ignore_errors=True)
+    return files
+
+@api.post("/sites/create-from-design")
+async def create_from_design(
+    file: UploadFile = File(...),
+    slug: str = Form(...), name: str = Form(""), domain: str = Form(""),
+    client_email: str = Form(""), client_password: str = Form(""),
+    sftp_host: str = Form(""), sftp_port: int = Form(22), sftp_username: str = Form(""),
+    sftp_password: str = Form(""), sftp_remote_path: str = Form(""),
+    u=Depends(require_super)):
+    slug = re.sub(r'[^a-z0-9-]', '-', slug.lower()).strip('-')
+    if not slug: raise HTTPException(400, "Enter a valid site ID (letters, numbers, hyphens).")
+    if await db.sites.find_one({"slug": slug}):
+        raise HTTPException(400, f"A site called '{slug}' already exists.")
+    client_email = client_email.strip().lower()
+    if client_email and await db.users.find_one({"email": client_email}):
+        raise HTTPException(400, f"A user with email '{client_email}' already exists.")
+    raw = await file.read()
+    if not raw: raise HTTPException(400, "The uploaded file is empty.")
+    local = os.path.join(SITES_DIR, slug)
+    if os.path.exists(local): shutil.rmtree(local, ignore_errors=True)
+    os.makedirs(local, exist_ok=True)
+    try:
+        extracted = _extract_design_zip(raw, local)
+        n = (await ingest_site(slug))["total"]
+        if n == 0:
+            raise HTTPException(400, f"Unpacked {extracted} file(s) but found no .html pages. Make sure the ZIP contains an index.html.")
+    except HTTPException:
+        shutil.rmtree(local, ignore_errors=True); await db.sites.delete_one({"slug": slug})
+        raise
+    except Exception as e:
+        shutil.rmtree(local, ignore_errors=True); await db.sites.delete_one({"slug": slug})
+        raise HTTPException(400, f"Couldn't set up the site: {e}")
+    set_fields = {"name": name.strip() or slug, "domain": (domain or "").strip().lower()}
+    if sftp_host.strip():
+        set_fields["sftp"] = {"host": sftp_host.strip(), "port": sftp_port or 22,
+            "username": sftp_username.strip(), "password": sftp_password,
+            "remote_path": (sftp_remote_path.strip() or "public_html")}
+    await db.sites.update_one({"slug": slug}, {"$set": set_fields})
+    created_user = None
+    if client_email and client_password:
+        await db.users.insert_one({"email": client_email, "password_hash": hash_pw(client_password),
+            "name": name.strip() or slug, "role": "editor", "site_id": slug,
+            "created_at": datetime.now(timezone.utc).isoformat()})
+        created_user = client_email
+    return {"ok": True, "slug": slug, "pages": n, "files": extracted,
+            "client_user": created_user, "sftp_set": bool(sftp_host.strip()),
+            "message": f"Created '{slug}' — {n} page{'s' if n!=1 else ''} ingested from {extracted} file(s)."}
 
 @api.post("/sites/{slug}/publish")
 async def publish(slug: str, u=Depends(current_user)):

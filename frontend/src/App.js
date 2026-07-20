@@ -678,8 +678,78 @@ function SitesTab({ flash, onSitesChanged }) {
   };
   const missing = [!f.slug && "Short ID", !f.host && "Host", !f.username && "Username", !f.password && "Password"].filter(Boolean);
 
+  // ---- New site from a design (ZIP upload) ----
+  const [showDesign, setShowDesign] = useState(false);
+  const [df, setDf] = useState({ slug: "", name: "", domain: "", client_email: "", client_password: "", sftp_host: "", sftp_port: 65002, sftp_username: "", sftp_password: "", sftp_remote_path: "" });
+  const [dfFile, setDfFile] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [dfMsg, setDfMsg] = useState("");
+  const createFromDesign = async () => {
+    if (!dfFile) { setDfMsg("✗ Choose a .zip of your design first."); return; }
+    setCreating(true); setDfMsg("… Uploading & building…");
+    try {
+      const fd = new FormData();
+      fd.append("file", dfFile);
+      Object.entries(df).forEach(([k, v]) => fd.append(k, v));
+      const { data } = await axios.post(`${API}/sites/create-from-design`, fd, { timeout: 180000 });
+      setDfMsg("✓ " + data.message + (data.client_user ? ` · client login: ${data.client_user}` : "") + (data.sftp_set ? " · SFTP saved" : ""));
+      setDf({ slug: "", name: "", domain: "", client_email: "", client_password: "", sftp_host: "", sftp_port: 65002, sftp_username: "", sftp_password: "", sftp_remote_path: "" });
+      setDfFile(null);
+      load(); onSitesChanged && onSitesChanged();
+    } catch (e) {
+      setDfMsg("✗ " + (e.response?.data?.detail || e.message || "Could not create the site"));
+    } finally { setCreating(false); }
+  };
+
   return (
     <div>
+      {user.role === "superadmin" && (
+        <div className="admin-form" style={{ borderTop: "none", paddingTop: 0, marginBottom: 24 }}>
+          <h4>New site from a design</h4>
+          <p className="hint">Upload a <b>.zip</b> of a finished site design (index.html + assets + any subfolders). The app unpacks it, ingests every page ready to edit, and can create the client login &amp; save Hostinger SFTP details in one go. Nothing is published until you press Publish.</p>
+          {!showDesign
+            ? <button className="btn primary" data-testid="design-open" onClick={() => setShowDesign(true)}>Create a site from a design ZIP</button>
+            : (
+              <div data-testid="design-form">
+                <label>Design ZIP file</label>
+                <input type="file" accept=".zip,application/zip" data-testid="design-file" onChange={e => setDfFile(e.target.files[0] || null)} />
+                <label>Site name</label>
+                <input data-testid="design-name" value={df.name} placeholder="Ribble Valley Cars" onChange={e => setDf({ ...df, name: e.target.value, slug: df.slug || e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") })} />
+                <label>Short ID (URL-safe)</label>
+                <input data-testid="design-slug" value={df.slug} placeholder="ribble-valley" onChange={e => setDf({ ...df, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} />
+                <label>Locked domain 🔒 (optional)</label>
+                <input data-testid="design-domain" value={df.domain} placeholder="ribblevalleycars.co.uk" onChange={e => setDf({ ...df, domain: e.target.value.trim().toLowerCase() })} />
+
+                <h4 style={{ marginTop: 18 }}>Client login (optional)</h4>
+                <label>Client email</label>
+                <input data-testid="design-client-email" value={df.client_email} placeholder="client@theirdomain.co.uk" onChange={e => setDf({ ...df, client_email: e.target.value })} />
+                <label>Client password</label>
+                <input data-testid="design-client-pass" type="text" value={df.client_password} placeholder="a password to give the client" onChange={e => setDf({ ...df, client_password: e.target.value })} />
+
+                <h4 style={{ marginTop: 18 }}>Hostinger SFTP (optional — can add later)</h4>
+                <label>SFTP host</label>
+                <input data-testid="design-sftp-host" value={df.sftp_host} placeholder="77.37.37.182" onChange={e => setDf({ ...df, sftp_host: e.target.value })} />
+                <label>Port</label>
+                <input data-testid="design-sftp-port" type="number" value={df.sftp_port} onChange={e => setDf({ ...df, sftp_port: parseInt(e.target.value || "65002") })} />
+                <label>Username</label>
+                <input data-testid="design-sftp-user" value={df.sftp_username} onChange={e => setDf({ ...df, sftp_username: e.target.value })} />
+                <label>Password</label>
+                <input data-testid="design-sftp-pass" type="password" value={df.sftp_password} onChange={e => setDf({ ...df, sftp_password: e.target.value })} />
+                <label>Remote path (this site's own folder)</label>
+                <input data-testid="design-sftp-path" value={df.sftp_remote_path} placeholder="/home/USER/domains/domain.co.uk/public_html" onChange={e => setDf({ ...df, sftp_remote_path: e.target.value })} />
+
+                {dfMsg && <div className={`test-msg ${dfMsg.startsWith("✓") ? "ok" : dfMsg.startsWith("✗") ? "bad" : ""}`} data-testid="design-result">{dfMsg}</div>}
+                <div className="sftp-btns">
+                  <button className="btn" data-testid="design-cancel" disabled={creating} onClick={() => { setShowDesign(false); setDfMsg(""); }}>Cancel</button>
+                  <button className="btn primary" data-testid="design-submit" disabled={creating || !dfFile || !df.slug} onClick={createFromDesign}>
+                    {creating ? "Building…" : "Create site from design"}
+                  </button>
+                </div>
+                {(!dfFile || !df.slug) && <div className="hint" style={{ marginTop: 8 }}>Choose a ZIP and enter a Short ID to enable Create.</div>}
+              </div>
+            )}
+        </div>
+      )}
       {user.role === "superadmin" && (
         <div className="admin-form" style={{ borderTop: "none", paddingTop: 0, marginBottom: 24 }}>
           <h4>Add a new site (pull from your server)</h4>
