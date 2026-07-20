@@ -451,6 +451,22 @@ clicking a card's text to edit opened the linked example site; duplicate broke g
   work; car-demo block ops regression PASS.
 - USER ACTION: rebuild Docker (new code) + RE-INGEST ivorydigital for the whole-card duplicate to appear.
 
+## 2026-07-20 (fork) — Editor toolbar declutter + card Link button
+User: toolbar "very messy and confusing" (~10 buttons incl. car-only Status on non-car cards); no Link
+button to change an example card's destination URL.
+- DECLUTTER (EDITOR_INJECT select()): split into element group + a "Card:" group (span.ed-div divider).
+  Element move/dup/delete only shows for standalone elements (not block children). Status gated on
+  blk.hasAttribute('data-status') → only car-template cards, NOT folio/generic cards.
+- CARD LINK: assign_regions now gives non-leaf <a href> (card/image links) a data-eid + {type:'link'}
+  region (render_page applies href). select() adds a "Link" button in the Card group when the block is an
+  <a>. Card-wrapping <a> are NOT contenteditable.
+- TESTING-AGENT-FOUND BUG (fixed by testing agent, reviewed OK): PUT /pages/{}/{}/link rejected type='link'
+  regions with 400 — validator now accepts type in ('text','link'); adds legacy link:True only for text type.
+- VERIFIED iteration_16.json 6/6 PASS: folio h3 toolbar = [Card: | Link, Duplicate, ◀Move, Move▶, Delete]
+  (no Status); Link prompt edits + persists card URL; no navigation on click; standalone <p> shows element
+  group only; car-demo cars still show Status; car card link N/A. Test data restored.
+- USER ACTION: rebuild Docker + RE-INGEST ivorydigital (card links become editable at import time).
+
 ## 2026-07-20 (fork) — Importer fix: root-absolute /assets → relative (fixes "massive icons" in editor)
 User reported (on their self-hosted TrueNAS) that ivorydigital renders unstyled ("massive icons") in the
 editor and the Templates tab isn't visible after updating.
