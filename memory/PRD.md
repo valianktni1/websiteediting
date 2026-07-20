@@ -609,3 +609,18 @@ VERIFIED: injected "Apex Ribble Valley" into brand-name spans on an RV clone →
 AND footer brand names are editable text regions; the brand link still exposes a link region (href editable);
 clicking the footer brand text selects the span (contenteditable=true, ed-sel) so "Apex" can be edited out.
 - USER ACTION: rebuild to cms-v9 → re-ingest → click the footer/header brand text → edit/delete "Apex".
+
+## 2026-06-13 (fork) — Sold Auto-Sort + Find & Replace + friendlier Help. Build cms-v10.
+1. SOLD AUTO-SORT: render_page (PUBLISH/PREVIEW only, not editor) now moves data-status="sold" car cards
+   to the END of their grid (per parent, preserving order among sold/available). Editor keeps manual order.
+   Verified: after marking the 1st car Sold, dist order = [available Porsche, sold Mercedes].
+2. FIND & REPLACE: new POST /api/sites/{slug}/replace {find,replace,match_case,dry_run}. Replaces across
+   ALL pages in region TEXT values + image ALT + seo.title. dry_run returns a match count; a real run saves
+   a "Before replacing …" restore point first (undoable) then updates page docs. Frontend: "Find & Replace"
+   button in the dashboard actions + FindReplaceModal (find/replace inputs, match-case, Find matches count,
+   Replace all). Verified: dry-run counted 1, apply changed Porsche→Ferrari, restore point created.
+3. HELP: added a "Help" button in the dashboard topbar → HelpModal (friendly, sectioned guide covering
+   text/photos/cars/status/find&replace/undo/publish) with styled gold headings + bullets (App.css
+   .help-guide). Also rewrote the in-editor "How to edit" tips to match current features. Screenshots confirm.
+- USER ACTION: rebuild to cms-v10. Sold-sort + finance + status ribbons all apply automatically on
+  Preview/Publish. Find & Replace and Help are on the dashboard.

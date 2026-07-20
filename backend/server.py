@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v9"
+BUILD_VERSION = "2026-06-13-cms-v10"
 
 @api.get("/version")
 async def version():
@@ -543,6 +543,23 @@ def render_page(page, for_editor=False, asset_base=""):
                 el["href"] = r.get("href","")
         if not for_editor and el.has_attr("data-eid"):
             del el["data-eid"]
+    if not for_editor:
+        # drop Sold cars to the bottom of their grid so available stock shows first (live only)
+        seen = set()
+        for car in bodyel.find_all(attrs={"data-block": "car"}):
+            p = car.parent
+            if p is None or id(p) in seen:
+                continue
+            seen.add(id(p))
+            cars = [c for c in p.find_all(attrs={"data-block": "car"}, recursive=False)]
+            sold = [c for c in cars if (c.get("data-status") or "") == "sold"]
+            keep = [c for c in cars if (c.get("data-status") or "") != "sold"]
+            if not sold or not keep:
+                continue
+            for c in cars:
+                c.extract()
+            for c in keep + sold:
+                p.append(c)
     inner = bodyel.decode_contents()
     seo = page.get("seo",{})
     head = f"<title>{seo.get('title','')}</title>\n" + "\n".join(seo.get("metas",[]))
@@ -1343,6 +1360,52 @@ async def preview(slug: str, u=Depends(current_user)):
     pages=[x async for x in db.pages.find({"site":slug})]
     out = build_dist(slug, pages, s["source_dir"])
     return {"dist":out,"pages":len(pages),"preview_url":f"/api/dist/{slug}/index.html"}
+
+class ReplaceBody(BaseModel):
+    find: str
+    replace: str = ""
+    match_case: bool = True
+    dry_run: bool = False
+
+def _count_and_replace(text, find, repl, match_case, do):
+    if not text or not find:
+        return text, 0
+    if match_case:
+        c = text.count(find)
+        return (text.replace(find, repl) if do else text), c
+    import re as _re
+    pat = _re.compile(_re.escape(find), _re.IGNORECASE)
+    c = len(pat.findall(text))
+    return (pat.sub(lambda m: repl, text) if do else text), c
+
+@api.post("/sites/{slug}/replace")
+async def find_replace(slug: str, body: ReplaceBody, u=Depends(current_user)):
+    s = await db.sites.find_one({"slug":slug})
+    if not s: raise HTTPException(404,"Site not found")
+    find = body.find
+    if not find: raise HTTPException(400,"Enter the word or phrase to find.")
+    do = not body.dry_run
+    total = 0; pages_hit = 0
+    if do:
+        await create_snapshot(slug, "manual", f'Before replacing "{find[:40]}"')
+    async for p in db.pages.find({"site":slug}):
+        page_count = 0
+        regions = p.get("regions", {})
+        for eid, r in regions.items():
+            if r.get("type") == "text":
+                nv, c = _count_and_replace(r.get("value",""), find, body.replace, body.match_case, do)
+                if c: r["value"] = nv; page_count += c
+            elif r.get("type") == "image":
+                na, c = _count_and_replace(r.get("alt",""), find, body.replace, body.match_case, do)
+                if c: r["alt"] = na; page_count += c
+        seo = p.get("seo", {})
+        nt, c = _count_and_replace(seo.get("title",""), find, body.replace, body.match_case, do)
+        if c: seo["title"] = nt; page_count += c
+        if page_count:
+            pages_hit += 1; total += page_count
+            if do:
+                await db.pages.update_one({"_id": p["_id"]}, {"$set": {"regions": regions, "seo": seo}})
+    return {"replacements": total, "pages": pages_hit, "applied": do}
 
 @api.get("/dist/{slug}/{path:path}")
 async def serve_dist(slug: str, path: str):

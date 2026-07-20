@@ -194,6 +194,114 @@ function AddPageModal({ site, onClose, onDone, flash }) {
   );
 }
 
+function FindReplaceModal({ site, onClose, onDone, flash }) {
+  const [find, setFind] = useState("");
+  const [replace, setReplace] = useState("");
+  const [matchCase, setMatchCase] = useState(true);
+  const [count, setCount] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const check = async () => {
+    if (!find) return;
+    setBusy(true); setDone(null);
+    try {
+      const { data } = await axios.post(`${API}/sites/${site}/replace`, { find, replace, match_case: matchCase, dry_run: true });
+      setCount(data);
+    } catch (e) { flash(e.response?.data?.detail || "Could not search"); }
+    finally { setBusy(false); }
+  };
+  const apply = async () => {
+    if (!find) return;
+    setBusy(true);
+    try {
+      const { data } = await axios.post(`${API}/sites/${site}/replace`, { find, replace, match_case: matchCase, dry_run: false });
+      setDone(data); setCount(null);
+      flash(`Replaced ${data.replacements} on ${data.pages} page${data.pages === 1 ? "" : "s"}`);
+      onDone && onDone();
+    } catch (e) { flash(e.response?.data?.detail || "Could not replace"); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Find & Replace across the whole site" onClose={onClose}>
+      <p className="hint">Change a word or phrase everywhere on this site in one go — perfect for wiping a leftover name or fixing the same typo on every page. A restore point is saved first, so you can always undo it.</p>
+      <label>Find this text</label>
+      <input data-testid="fr-find" value={find} placeholder="e.g. Apex" onChange={e => { setFind(e.target.value); setCount(null); setDone(null); }} />
+      <label>Replace with (leave empty to delete it)</label>
+      <input data-testid="fr-replace" value={replace} placeholder="e.g. Ribble Valley" onChange={e => setReplace(e.target.value)} />
+      <label className="check-row" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+        <input type="checkbox" data-testid="fr-case" checked={matchCase} onChange={e => { setMatchCase(e.target.checked); setCount(null); }} />
+        Match upper/lower case exactly
+      </label>
+      {count && (
+        <div className="hint" data-testid="fr-count" style={{ marginTop: 10 }}>
+          {count.replacements > 0
+            ? `Found ${count.replacements} match${count.replacements === 1 ? "" : "es"} across ${count.pages} page${count.pages === 1 ? "" : "s"}. Click Replace all to change them.`
+            : `No matches for "${find}".`}
+        </div>
+      )}
+      {done && <div className="hint" data-testid="fr-done" style={{ marginTop: 10, color: "#1f9d55" }}>✓ Replaced {done.replacements} on {done.pages} page{done.pages === 1 ? "" : "s"}. Open a page to see it, then Publish to go live.</div>}
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={onClose}>Close</button>
+        <button className="btn" data-testid="fr-check" disabled={busy || !find} onClick={check}>{busy ? "…" : "Find matches"}</button>
+        <button className="btn primary" data-testid="fr-apply" disabled={busy || !find || (count && count.replacements === 0)} onClick={apply}>Replace all</button>
+      </div>
+    </Modal>
+  );
+}
+
+function HelpModal({ onClose }) {
+  return (
+    <Modal title="How to use the editor" onClose={onClose} wide>
+      <div className="help-guide" data-testid="help-guide">
+        <p className="hint">Everything here is safe to try — every change can be undone, and nothing goes live until you hit <b>Publish</b>.</p>
+
+        <h4>Editing text</h4>
+        <ul>
+          <li>Click almost any words — a heading, a paragraph, a price, a spec like <b>Year</b> or <b>Mileage</b>, even the name in your logo — and just type over them.</li>
+          <li>Click away when you're done. That's it.</li>
+        </ul>
+
+        <h4>Photos</h4>
+        <ul>
+          <li>Click a photo, then <b>Replace</b> to swap it (you can crop &amp; zoom to fit the frame).</li>
+          <li><b>+ Add photos</b> turns a single photo into a swipeable gallery.</li>
+          <li>Drag one photo onto another to reorder them.</li>
+          <li><b>Alt text</b> describes the photo for Google — hit the ✨ button to let AI write it.</li>
+        </ul>
+
+        <h4>Car listings</h4>
+        <ul>
+          <li>Click a car's title, price or a spec to bring up the <b>Card</b> toolbar.</li>
+          <li><b>Duplicate</b> a car to add a similar one, or <b>+ Blank card</b> to start a fresh listing.</li>
+          <li><b>Status</b> lets you mark a car <b>Sold</b>, <b>Reserved</b> or <b>New in</b> — a ribbon appears automatically, and Sold cars drop to the bottom of the list on your live site.</li>
+          <li>A <b>"From £x/mo"</b> finance estimate is added to each car automatically on the live site.</li>
+        </ul>
+
+        <h4>Change something everywhere</h4>
+        <ul>
+          <li>Use <b>Find &amp; Replace</b> (top of the dashboard) to change a word across every page at once — great for removing an old name or fixing a repeated typo.</li>
+        </ul>
+
+        <h4>Safety net</h4>
+        <ul>
+          <li>Made a mistake? Hit <b>↶ Undo last change</b> while editing.</li>
+          <li>Want to jump back further? <b>Restore points</b> on the dashboard rolls the whole site back to any earlier moment — and even that can be undone.</li>
+        </ul>
+
+        <h4>Going live</h4>
+        <ul>
+          <li><b>Preview</b> opens your site in a new tab exactly as visitors will see it.</li>
+          <li><b>Publish to Hostinger</b> pushes it live. A safety lock stops one site ever overwriting another.</li>
+        </ul>
+      </div>
+      <div className="modal-actions">
+        <button className="btn primary" onClick={onClose}>Got it</button>
+      </div>
+    </Modal>
+  );
+}
+
+
 function VersionHistory({ site, onClose, flash, onRestored }) {
   const [snaps, setSnaps] = useState(null);
   const [busy, setBusy] = useState("");
@@ -734,6 +842,7 @@ function Dashboard() {
       <header className="topbar">
         <div className="brand">Ivory Digital <span>Editor</span></div>
         <div className="topbar-right">
+          <button className="btn ghost" data-testid="help-btn" onClick={() => setModal("help")}>Help</button>
           {isAdmin && <button className="btn ghost" data-testid="admin-settings-btn" onClick={() => setModal("admin")}>Admin settings</button>}
           <span className="who" data-testid="current-user">{user.email} · {user.role}</span>
           <button className="btn ghost" data-testid="logout-btn" onClick={logout}>Logout</button>
@@ -755,6 +864,7 @@ function Dashboard() {
           {site && (
             <div className="actions">
               <button className="btn" data-testid="add-page-btn" onClick={() => setModal("addpage")}>+ New page</button>
+              <button className="btn" data-testid="find-replace-btn" onClick={() => setModal("replace")}>Find &amp; Replace</button>
               <button className="btn" data-testid="version-history-btn" onClick={() => setModal("versions")}>Restore points</button>
               <button className="btn" data-testid="preview-btn" onClick={preview}>Preview</button>
               <button className="btn primary" data-testid="publish-btn" onClick={() => setModal("publish")}>Publish to Hostinger</button>
@@ -780,6 +890,8 @@ function Dashboard() {
         </div>
       </div>
       {modal === "addpage" && site && <AddPageModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => { setModal(null); loadSites(site.slug); }} />}
+      {modal === "replace" && site && <FindReplaceModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => loadSites(site.slug)} />}
+      {modal === "help" && <HelpModal onClose={() => setModal(null)} />}
       {modal === "versions" && site && <VersionHistory site={site.slug} flash={flash} onClose={() => setModal(null)} onRestored={() => loadSites(site.slug)} />}
       {modal === "admin" && <AdminSettings user={user} flash={flash} onClose={() => setModal(null)} onSitesChanged={() => loadSites()} />}
       {modal === "publish" && site && <PublishConfirm site={site.slug} flash={flash} onClose={() => setModal(null)} />}
@@ -1053,15 +1165,14 @@ function Editor({ site, page, onBack, flash }) {
           <div className="tips">
             <h4>How to edit</h4>
             <ul>
-              <li>Click any <b>text</b> and type to change it.</li>
-              <li>Click an element to get a <b>toolbar</b> with actions.</li>
-              <li><b>Images</b>: Replace (crop &amp; zoom to fit), "+ Add photos" for a gallery, "Alt text" (✨ AI), or "Caption" for a line under the photo.</li>
-              <li><b>Reorder photos</b>: drag one photo onto another to swap them, or use ↑/↓.</li>
+              <li>Click any <b>text</b> — headings, prices, specs (Year/Mileage), even the logo name — and type to change it.</li>
+              <li><b>Photos</b>: Replace (crop &amp; zoom), "+ Add photos" for a gallery, "Alt text" (✨ AI), or "Caption".</li>
+              <li><b>Reorder photos</b>: drag one onto another, or use ↑/↓.</li>
+              <li><b>Cars</b>: click a car's title/price to get the <b>Card</b> toolbar — Duplicate, + Blank card, or <b>Status</b> (Sold / Reserved / New in).</li>
+              <li>Sold cars drop to the bottom of the list on your live site automatically.</li>
               <li><b>Links / buttons</b>: "Link" to change where they go.</li>
-              <li><b>Duplicate</b>, <b>Delete</b>, or <b>+ Button</b> anything.</li>
-              <li>Use <b>↑ Up</b> / <b>↓ Down</b> to reorder items like gallery photos.</li>
               <li>Made a mistake? Hit <b>↶ Undo last change</b> up top.</li>
-              <li>Hit <b>Publish</b> on the dashboard to go live.</li>
+              <li>Hit <b>Publish</b> on the dashboard to go live. Tap <b>Help</b> up top for the full guide.</li>
             </ul>
           </div>
         </aside>
