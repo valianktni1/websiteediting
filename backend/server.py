@@ -15,6 +15,8 @@ from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
+from PIL import Image, ImageOps
+import io as _io
 
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
@@ -1020,10 +1022,42 @@ async def download_zip(name: str):
 @api.post("/media/{slug_site}/upload")
 async def upload_media(slug_site: str, file: UploadFile = File(...), u=Depends(current_user)):
     d = os.path.join(MEDIA_DIR, slug_site); os.makedirs(d, exist_ok=True)
-    safe = re.sub(r'[^a-zA-Z0-9_.-]','_', file.filename)
-    name = f"{int(datetime.now().timestamp())}_{safe}"
-    with open(os.path.join(d,name),"wb") as f: shutil.copyfileobj(file.file, f)
-    return {"url": f"assets/uploads/{name}"}
+    raw = await file.read()
+    data, ext = optimize_image(raw, file.filename or "upload")
+    base = re.sub(r'[^a-zA-Z0-9_-]', '_', os.path.splitext(file.filename or "image")[0])[:60] or "image"
+    name = f"{int(datetime.now().timestamp())}_{base}.{ext}"
+    with open(os.path.join(d, name), "wb") as f: f.write(data)
+    return {"url": f"assets/uploads/{name}", "bytes": len(data), "original_bytes": len(raw)}
+
+MAX_IMG_DIM = 2000  # longest side; keeps heroes crisp, tames giant phone photos
+
+def optimize_image(raw: bytes, filename: str):
+    """Compress uploads to lightweight, high-quality WebP. Free, no AI.
+    Keeps transparency, auto-rotates by EXIF, caps the longest side.
+    Falls back to the original bytes for SVG/animated GIF or anything Pillow can't read."""
+    ext = (os.path.splitext(filename)[1] or "").lower().lstrip(".")
+    if ext == "svg":
+        return raw, "svg"
+    try:
+        im = Image.open(_io.BytesIO(raw))
+        if getattr(im, "is_animated", False):
+            return raw, (ext or "gif")  # don't flatten animations
+        im = ImageOps.exif_transpose(im)  # honour phone orientation
+        has_alpha = im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info)
+        im = im.convert("RGBA" if has_alpha else "RGB")
+        w, h = im.size
+        if max(w, h) > MAX_IMG_DIM:
+            im.thumbnail((MAX_IMG_DIM, MAX_IMG_DIM), Image.LANCZOS)
+        out = _io.BytesIO()
+        im.save(out, format="WEBP", quality=82, method=6)
+        data = out.getvalue()
+        if len(data) < len(raw) or ext not in ("webp",):
+            return data, "webp"
+        return raw, ext or "webp"
+    except Exception:
+        return raw, ext or "bin"
+
+
 
 # ---------------- publish ----------------
 def build_dist(site_slug, pages, src_dir):

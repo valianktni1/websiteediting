@@ -422,6 +422,19 @@ Built a self-contained static page in /app/sites_source/broadfield (index.html +
   white→transparent via Pillow, 463x500, 132KB). Displayed white on dark nav/footer via CSS filter:invert(1).
   Logo is now an <img> (nav + footer) so it's click-to-replace in the editor. ZIP re-packaged.
 
+## 2026-07-20 (fork) — Auto image optimisation on upload (free, no AI)
+Client uploads are now compressed automatically at the single upload choke point
+(POST /api/media/{slug}/upload → upload_media, uses optimize_image()).
+- Converts to WebP quality 82 method 6; caps longest side at MAX_IMG_DIM=2000px; auto-rotates by EXIF;
+  preserves transparency (RGBA); strips metadata. SVG + animated GIF pass through untouched; any file
+  Pillow can't read falls back to original bytes.
+- Verified via curl: 3000x2000 JPEG 976KB → 2000x1333 WebP 97KB (~90% smaller); transparent PNG stays RGBA.
+  Response now also returns {bytes, original_bytes}.
+- Transparent to the frontend (same endpoint/response shape; url now .webp). Covers both crop-replace and
+  bulk-photo upload flows (both POST to /media/{slug}/upload).
+- DEPENDENCY: added Pillow==12.3.0 to backend/requirements.txt (surgical append). Pillow has manylinux
+  wheels — safe for the TrueNAS Docker build. REQUIRED for this feature on their instance.
+
 ## 2026-07-20 (fork) — Importer fix: root-absolute /assets → relative (fixes "massive icons" in editor)
 User reported (on their self-hosted TrueNAS) that ivorydigital renders unstyled ("massive icons") in the
 editor and the Templates tab isn't visible after updating.
