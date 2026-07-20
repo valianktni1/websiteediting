@@ -435,6 +435,22 @@ Client uploads are now compressed automatically at the single upload choke point
 - DEPENDENCY: added Pillow==12.3.0 to backend/requirements.txt (surgical append). Pillow has manylinux
   wheels — safe for the TrueNAS Docker build. REQUIRED for this feature on their instance.
 
+## 2026-07-20 (fork) — Editor fixes: link-click-through + whole-card duplicate for portfolio cards
+User bug on ivorydigital web-design-seo 'Our Work' grid (<a class="folio" href target=_blank> cards):
+clicking a card's text to edit opened the linked example site; duplicate broke grid spacing; no add-card.
+- FIX 1 (EDITOR_INJECT): capture-phase document click handler preventDefault on any e.target.closest('a')
+  → links NEVER navigate in the editor canvas. Applies at render time (no re-ingest needed).
+- FIX 2 (importer): _tag_repeating_blocks(body) in ingest_page (before assign_regions) auto-tags repeating
+  card-like siblings (div/article/li/a/section sharing a class, containing a heading OR img+p) with
+  data-block=<firstclass>. Nav/link lists excluded (no heading/media). So .folio (and .card etc.) become
+  whole-card blocks → "Duplicate <block>" clones the full card as a grid sibling (spacing preserved).
+  Needs RE-INGEST of existing sites to take effect.
+- "Add another placeholder" = "Duplicate <card>" (clones full card, then edit the copy).
+- VERIFIED iteration_15.json 6/6 PASS: click-to-edit no longer opens linked site; Duplicate folio adds a
+  complete 5th card in the same grid (gap 26px, 533px cols preserved, 5/5 children are A.folio); delete/undo
+  work; car-demo block ops regression PASS.
+- USER ACTION: rebuild Docker (new code) + RE-INGEST ivorydigital for the whole-card duplicate to appear.
+
 ## 2026-07-20 (fork) — Importer fix: root-absolute /assets → relative (fixes "massive icons" in editor)
 User reported (on their self-hosted TrueNAS) that ivorydigital renders unstyled ("massive icons") in the
 editor and the Templates tab isn't visible after updating.
