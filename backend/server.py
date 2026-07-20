@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v10"
+BUILD_VERSION = "2026-06-13-cms-v11"
 
 @api.get("/version")
 async def version():
@@ -364,11 +364,11 @@ def _slug_for_relpath(relpath):
 
 async def ingest_site(site_slug):
     src = os.path.join(SITES_DIR, site_slug)
-    if not os.path.isdir(src): return 0
+    if not os.path.isdir(src): return {"total": 0, "added": 0, "preserved": 0}
     await db.sites.update_one({"slug":site_slug},{"$set":{"slug":site_slug,"name":site_slug,"source_dir":src,
         "updated_at":datetime.now(timezone.utc).isoformat()}}, upsert=True)
     order=[]
-    count=0
+    total=0; added=0; preserved=0
     # recurse into subfolders (e.g. car-sales/index.html) but skip asset/hidden dirs
     for path in sorted(glob.glob(os.path.join(src,"**","*.html"), recursive=True)):
         relpath = os.path.relpath(path, src).replace("\\","/")
@@ -377,16 +377,26 @@ async def ingest_site(site_slug):
             continue
         slug = _slug_for_relpath(relpath)
         fn = os.path.basename(path)
-        data = ingest_page(open(path,encoding="utf-8").read(), slug)
-        data["site"]=site_slug; data["filename"]=fn; data["relpath"]=relpath
-        await db.pages.update_one({"site":site_slug,"slug":slug},{"$set":data}, upsert=True)
-        order.append({"slug":slug,"filename":fn,"relpath":relpath,"title":data["title"]})
-        count+=1
+        existing = await db.pages.find_one({"site":site_slug,"slug":slug})
+        if existing:
+            # PRESERVE the user's edits — never overwrite an already-imported page from source.
+            # Only refresh routing metadata so subfolder publish keeps working.
+            await db.pages.update_one({"site":site_slug,"slug":slug},
+                {"$set":{"filename":fn,"relpath":relpath,"site":site_slug}})
+            title = existing.get("title", slug)
+            preserved += 1
+        else:
+            data = ingest_page(open(path,encoding="utf-8").read(), slug)
+            data["site"]=site_slug; data["filename"]=fn; data["relpath"]=relpath
+            await db.pages.update_one({"site":site_slug,"slug":slug},{"$set":data}, upsert=True)
+            title = data["title"]; added += 1
+        order.append({"slug":slug,"filename":fn,"relpath":relpath,"title":title})
+        total+=1
     await db.sites.update_one({"slug":site_slug},{"$set":{"order":order}})
-    if count and not await db.snapshots.find_one({"site":site_slug,"kind":"import"}):
+    if total and not await db.snapshots.find_one({"site":site_slug,"kind":"import"}):
         await create_snapshot(site_slug, "import", "Original (as imported)")
     await autofill_brand(site_slug, src)
-    return count
+    return {"total": total, "added": added, "preserved": preserved}
 
 _HEX = r'#[0-9a-fA-F]{3,8}'
 
@@ -859,9 +869,9 @@ async def sites(u=Depends(current_user)):
 
 @api.post("/sites/{slug}/ingest")
 async def do_ingest(slug: str, u=Depends(require_admin)):
-    n = await ingest_site(slug)
-    if n==0: raise HTTPException(404,f"No pages found in {SITES_DIR}/{slug}")
-    return {"ingested":n}
+    res = await ingest_site(slug)
+    if res["total"]==0: raise HTTPException(404,f"No pages found in {SITES_DIR}/{slug}")
+    return {"ingested":res["total"], "added":res["added"], "preserved":res["preserved"]}
 
 @api.get("/sites/{slug}/pages")
 async def site_pages(slug: str, u=Depends(current_user)):
@@ -1595,7 +1605,7 @@ async def _run_add_job(job_id, slug, conf, name, domain):
         return
     log.info(f"[add_site] '{slug}' pulled {pulled} files, ingesting…")
     await upd(state="ingesting", message=f"Downloaded {pulled} files. Reading your pages…", pulled=pulled)
-    n = await ingest_site(slug)
+    n = (await ingest_site(slug))["total"]
     if n == 0:
         shutil.rmtree(local, ignore_errors=True)
         await db.sites.delete_one({"slug": slug})

@@ -623,7 +623,7 @@ function SitesTab({ flash, onSitesChanged }) {
   useEffect(() => { load(); }, []);
   const ingest = async (slug) => {
     setBusy(slug);
-    try { const { data } = await axios.post(`${API}/sites/${slug}/ingest`); flash(`Ingested ${data.ingested} pages`); load(); onSitesChanged && onSitesChanged(); }
+    try { const { data } = await axios.post(`${API}/sites/${slug}/ingest`); flash(data.added > 0 ? `Added ${data.added} new page${data.added===1?"":"s"} · kept your edits on ${data.preserved}` : `Up to date · your edits on all ${data.preserved} page${data.preserved===1?"":"s"} were kept`); load(); onSitesChanged && onSitesChanged(); }
     catch (e) { flash("Ingest failed"); }
     finally { setBusy(""); }
   };

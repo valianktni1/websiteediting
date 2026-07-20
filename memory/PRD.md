@@ -624,3 +624,16 @@ clicking the footer brand text selects the span (contenteditable=true, ed-sel) s
    .help-guide). Also rewrote the in-editor "How to edit" tips to match current features. Screenshots confirm.
 - USER ACTION: rebuild to cms-v10. Sold-sort + finance + status ribbons all apply automatically on
   Preview/Publish. Find & Replace and Help are on the dashboard.
+
+## 2026-06-13 (fork) — CRITICAL: re-ingest no longer wipes edits. Build cms-v11.
+User kept losing all their edits: every re-ingest re-parsed the source file and OVERWROTE the page
+(template+regions+seo) via `$set data`, so edits reverted to the original template each time (they'd been
+told to re-ingest after each code update → repeatedly redoing work). FIX: ingest_site now, for pages that
+ALREADY exist in the CMS, PRESERVES them (only refreshes routing metadata filename/relpath) and never
+re-imports from source; it imports ONLY genuinely NEW files. Returns {total, added, preserved}; do_ingest
+and add_site updated; frontend toast now says e.g. "Added N new pages · kept your edits on M" or "Up to
+date · your edits on all M pages were kept". VERIFIED: edited a title → re-ingested → edit preserved;
+added a new .html → re-ingest added it (added:1) while preserving edits.
+- IMPLICATION: to pull a genuinely fresh copy of an already-imported page from source, the user must
+  delete that page/site first (edits win by default). This is the correct trade-off for their workflow.
+- USER ACTION: rebuild to cms-v11 → re-ingest freely; edits are now kept.
