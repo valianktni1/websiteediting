@@ -1,0 +1,144 @@
+{
+  "project_name": "Broadfield Motor Company Ltd",
+  "app_type": "marketing_site",
+  "theme": "dark",
+  "archetype": "Luxury + The Performance Pro",
+  "tone": "Premium, Characterful, Enthusiast-driven (Italian passion/red + motorbike adrenaline)",
+  "typography": {
+    "import_url": "@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,800;1,400;1,600&family=Oswald:wght@400;500;700&family=Manrope:wght@300;400;500;600&display=swap');",
+    "headings": {
+      "primary": "Oswald, sans-serif (Aggressive, automotive, condensed - used for bold impact)",
+      "secondary": "Playfair Display, serif (Elegant, Italian heritage - used for 'Alfa Romeo' and luxury storytelling)"
+    },
+    "body": "Manrope, sans-serif (Clean, technical, readable)",
+    "rules": [
+      "H1 must be fluid text-5xl to text-7xl with tracking-tighter.",
+      "Use Playfair Display in italic (font-serif italic) to contrast strongly against Oswald.",
+      "Never use Inter or Roboto for headings."
+    ]
+  },
+  "colors": {
+    "background": {
+      "base": "#050505",
+      "surface": "#121212",
+      "surface_light": "#1E1E1E"
+    },
+    "text": {
+      "primary": "#F3F4F6",
+      "secondary": "#9CA3AF",
+      "muted": "#6B7280"
+    },
+    "accent": {
+      "rosso_corsa": "#C82829",
+      "rosso_dark": "#991B1B",
+      "metallic": "#E5E7EB"
+    },
+    "rules": "Adhere strictly to a dark, cinematic palette. The 'Rosso Corsa' (Red) is used ONLY as a kinetic trigger (CTAs, precise lines, active states). The background is deep obsidian, not pure black (#000000)."
+  },
+  "layout_and_spacing": {
+    "spacing_scale": "Generous. Use p-8, p-12, p-16, and py-24 or py-32 for section separation.",
+    "grids": [
+      {
+        "name": "The Asymmetrical 60/40 Split (Hero)",
+        "description": "Desktop: Left side (Bikes) takes up 60% of width, Right side (Cars) takes 40%. This physically guarantees the 'MORE emphasis on motorbike sales' requirement. Mobile: Stack vertically with Bikes first."
+      },
+      {
+        "name": "Bento Tetris (Motorcycle Showcase)",
+        "description": "Grid-cols-1 md:grid-cols-12 gap-6. One massive 'Hero' bike spanning col-span-8 row-span-2. Others spanning col-span-4."
+      }
+    ]
+  },
+  "surface_strategies": [
+    "Crystal Glass: For the sticky Navigation. bg-[#050505]/70 backdrop-blur-2xl border-b border-white/10.",
+    "Grid Borders (Technical Layout): For 'Why Choose Us' and stats. border-r border-b border-white/10 to show mechanical precision."
+  ],
+  "components": [
+    {
+      "name": "Sticky Navbar",
+      "rules": "Glassmorphism. Must contain Logo, Links (Cars, Bikes, Servicing), and a solid Red CTA button with Phone numbers: 01254 875970."
+    },
+    {
+      "name": "Hero Section",
+      "rules": "min-h-screen. 60/40 horizontal split. Left: Massive 'TWO WHEELS' text over Ducati image. Right: 'FOUR WHEELS' over Alfa Romeo image. Hovering either side slightly expands it."
+    },
+    {
+      "name": "Editorial Marquee",
+      "rules": "Use framer-motion or react-fast-marquee. Text: 'ALFA ROMEO SPECIALIST • PREMIUM USED BIKES • SPECIALIST SERVICING'. Font: Playfair Display. Slow drift."
+    },
+    {
+      "name": "Bikes Showcase Grid",
+      "rules": "Bento Tetris grid. High visual density. Use large red accents and Oswald font for numbers/prices."
+    },
+    {
+      "name": "Alfa Romeo Showcase",
+      "rules": "Editorial, magazine-style layout. 1 massive image, generous whitespace (or darkspace), Playfair Display typography to ooze heritage."
+    },
+    {
+      "name": "Specialist Servicing Section",
+      "rules": "Dark, gritty, mechanical. Use the vintage car repair image. High contrast."
+    },
+    {
+      "name": "Footer",
+      "rules": "Massive 'LET'S TALK' text (text-[10vw]). Full contact details: 01254 875970 / 07412 707606."
+    }
+  ],
+  "image_urls": {
+    "hero_bikes": {
+      "url": "https://images.pexels.com/photos/8339391/pexels-photo-8339391.jpeg",
+      "description": "Biker on red Ducati in illuminated city. High energy, dark background."
+    },
+    "hero_cars": {
+      "url": "https://images.unsplash.com/photo-1741091952652-5ce788f30eaf",
+      "description": "Red sports car highlighted in darkness. Cinematic."
+    },
+    "alfa_emblem": {
+      "url": "https://images.pexels.com/photos/35507710/pexels-photo-35507710.jpeg",
+      "description": "Alfa Romeo emblem close up. Perfect for the 'Alfa Romeo Specialist' section."
+    },
+    "mechanic_servicing": {
+      "url": "https://images.pexels.com/photos/29198153/pexels-photo-29198153.jpeg",
+      "description": "Vintage car repair, dark and mechanical."
+    },
+    "showroom_bikes_1": {
+      "url": "https://images.unsplash.com/photo-1773940792913-94baf5fa0130",
+      "description": "Red sport motorcycle displayed indoors on a mat."
+    },
+    "showroom_bikes_2": {
+      "url": "https://images.unsplash.com/photo-1568772585407-9361f9bf3a87",
+      "description": "Red and black sports bike in dark garage."
+    }
+  },
+  "motion_and_interactions": [
+    "Hover states: Image scaling (transform scale-105) inside overflow-hidden containers.",
+    "Page load: Staggered fade-up for typography using framer-motion.",
+    "Section transitions: Smooth scroll with lenis."
+  ],
+  "accessibility": [
+    "Ensure contrast ratios meet WCAG AA standards. Use text-shadow on text placed over images.",
+    "Include aria-labels on purely decorative images.",
+    "Add data-testid attributes to all buttons, links, and forms."
+  ],
+  "instructions_to_main_agent": [
+    "This is a frontend static HTML/CSS (React/Tailwind) project. The app is already initialized. Use .js extensions, NOT .tsx.",
+    "Install required dependencies: `yarn add framer-motion @phosphor-icons/react react-fast-marquee lenis`.",
+    "DO NOT use generic Shadcn components (like Card) for the Hero or Vehicle Showcases. Build custom div structures to allow asymmetrical overlaps.",
+    "Add 'dark' class to html/body. This site is exclusively Dark Mode.",
+    "Apply optical alignment over geometrical alignment.",
+    "Ensure images never exceed 80vh on mobile to prevent blocking content.",
+    "For the Hero Split, implement it as a flex or grid layout that guarantees Bikes (left) is visually larger or equal to Cars (right)."
+  ],
+  "universal_guidelines_for_main_agent": [
+    "You tend to converge toward generic, 'on distribution' outputs. Avoid the 'AI slop' aesthetic. Make creative, distinctive frontends.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition (e.g., transition: all). Add transitions for specific interactive elements only.",
+    "You MUST NOT center align the app container (.App { text-align: center; }).",
+    "Always use modern button styles like pill-shaped, or sharp buttons with interaction animations & color relevant to the app style.",
+    "NEVER use AI assistant Emoji characters (🤖🧠💭💡) for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable.",
+    "NEVER use placeholder images or logos. Use the provided image URLs."
+  ]
+}
