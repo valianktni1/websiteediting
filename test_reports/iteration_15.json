@@ -1,0 +1,35 @@
+{
+  "summary": "Verified BOTH bug fixes on ivorydigital 'web-design-seo' Our Work portfolio: (1) clicking an <h3>/<p> inside an <a class='folio'> card in the editor NO LONGER navigates to the external example site — the capture-phase document click handler in EDITOR_INJECT preventDefault's on any e.target.closest('a'); pages count stayed 1, iframe URL unchanged. The heading also becomes contenteditable and toolbar #ed-tb appears. (2) The importer's _tag_repeating_blocks correctly tagged all 4 <a class='folio'> cards with data-block='folio' — clicking a text element reveals gold block buttons 'Duplicate folio', 'Delete folio', 'Status', '◀ Move', 'Move ▶'. Clicking 'Duplicate folio' inserts a COMPLETE new card (image + h3 + p + 'VISIT SITE →' link) as a direct sibling in the SAME grid: container 'container grid grid-2', gap 26px, gridTemplateColumns '533px 533px', 5/5 children are A.folio (no wrapper orphan) — spacing identical to originals. h3 text edit persisted (verified 'EDITED' suffix saved through blur; undo reverted). car-demo regression PASS — 'Duplicate car'/'Delete car' block buttons still work. All 6 review items PASS.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_results": {
+    "bug_fix_1_no_link_navigation": "PASS — mouse click on h3 'Wife To Be — Chester & Cheshire' inside <a class='folio' href='...' target='_blank'> did NOT open the external site. page.context.pages count stayed 1 (no new tab); frame.url unchanged. Capture-phase click handler in EDITOR_INJECT confirmed active (has_capture_click=True).",
+    "bug_fix_1b_text_edit_works": "PASS — after click, h3 became contenteditable=true (selected_ce='true', selected_tag='H3'), toolbar #ed-tb appeared (display:flex) with 10 buttons. Typed ' EDITED' at end, blur fired via body click, text persisted (h3.textContent='Wife To Be — Chester & Cheshire EDITED') and Undo reverted.",
+    "bug_fix_2_duplicate_folio_full_card": "PASS — 'Duplicate folio' toolbar button present. After click: folios went 4→5. New card at index 1 has image=True, h3='Wife To Be — Chester & Cheshire', p (bridal boutique description)=True, 'VISIT SITE →' link=True. All 5 children of parent are A.folio (no wrapping orphan div).",
+    "bug_fix_2b_grid_spacing_preserved": "PASS — parent unchanged: className='container grid grid-2', display=grid, gap=26px, gridTemplateColumns='533px 533px'. 5 folios laid out in 3 rows: [254,1773],[813,1773] / [254,2273],[813,2273] / [254,2772]. Same 533px width, same 26px gap as originals. New card is a proper grid child, not jammed.",
+    "delete_folio_and_undo": "PASS — Undo last change reverted duplicate + text edit back to original 4 folios with original titles. Undo functionality works.",
+    "regression_car_demo_block_ops": "PASS — car-demo home page: 2 [data-block='car'] articles; clicking 2021 Mercedes h3 opens toolbar with 'Duplicate car','Delete car','Status','◀ Move','Move ▶' gold block buttons identical to folio behavior.",
+    "toolbar_button_labels": "['↑ Up', '↓ Down', 'Duplicate', '+ Button', 'Delete', 'Duplicate folio', 'Delete folio', 'Status', '◀ Move', 'Move ▶'] — matches spec exactly."
+  },
+  "evidence_screenshots": [
+    "/app/.screenshots/iv_toolbar.png (h3 selected, toolbar shows gold 'Duplicate folio'/'Delete folio'/'◀ Move'/'Move ▶' buttons)",
+    "/app/.screenshots/iv_folio_grid.png (5 folios after Duplicate folio — two identical Chester & Cheshire cards side-by-side in row 1, correct 26px gap, evenly spaced)",
+    "/app/.screenshots/iv_after_dup.png",
+    "/app/.screenshots/car-demo toolbar with 'Duplicate car'/'Delete car' captured in last screenshot output"
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "EDITOR_INJECT capture-phase click handler (server.py L518-521) correctly uses useCapture=true so preventDefault fires before the anchor's default action — good.",
+    "_tag_repeating_blocks (server.py L256) correctly tagged 4 <a.folio> siblings — grid layout preserved because data-block is applied to the same <a> element that was already the grid child (no extra wrapper introduced).",
+    "The mk() toolbar button uses 'mousedown' with preventDefault (L533) which prevents blur of the contenteditable before op fires — solid pattern."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only run per request)", "frontend": "100% (6/6 review items PASS)"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (superadmin) — worked.",
+  "seed_data_creation": "None persistent — Duplicate folio + h3 text edit made during test were reverted via Undo last change (6 undos issued, final state = original 4 folios with original titles).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Editor iframe = [data-testid='page-frame']. Toolbar #ed-tb lives INSIDE iframe with no data-testid — locate via frame.locator('#ed-tb button', has_text='Duplicate folio'). Text elements become contenteditable via [data-eid]; click a plain .click() on h3 works (mousedown not needed). After op button click iframe RELOADS so re-acquire content_frame() before further calls. Undo button is 'Undo last change' in top bar; each undo reverts one op and reloads iframe.",
+  "rca of the issue": "Original bug: card was <a class='folio' href=... target='_blank'> — a full-card link. Clicking any child (h3, p) bubbled to the anchor and opened the linked example site. Fix 1 (server.py EDITOR_INJECT L518-521): capture-phase document click listener calls e.preventDefault() on any e.target.closest('a'), stopping navigation before browser default. Fix 2 (server.py _tag_repeating_blocks L256): during ingest, repeating card-like siblings (div/article/li/a/section sharing a class and containing heading+img+p) get data-block='<class>'. Because the tag is applied to the <a> itself (already a grid child), Duplicate folio clones and inserts a sibling <a class='folio'> — grid layout stays intact. Verified: 5/5 children are still direct A.folio elements after duplicate, gap and columns unchanged."
+}

@@ -252,6 +252,29 @@ def assign_regions(body):
         regions[eid] = {"type": "image", "value": img.get("src", ""), "alt": img.get("alt", "")}
     return regions
 
+def _tag_repeating_blocks(soup):
+    """Auto-tag repeating card-like siblings with data-block so a whole card can be
+    duplicated/deleted/moved in the editor (keeps grid spacing). Detects any parent with
+    >=2 direct children sharing a class that each look like a card (a heading, or an image
+    plus a paragraph). Nav menus / link lists are excluded (no heading/media)."""
+    from collections import Counter
+    CARD_TAGS = {"div", "article", "li", "a", "section"}
+    for parent in soup.find_all():
+        kids = [c for c in parent.find_all(recursive=False)
+                if getattr(c, "name", None) in CARD_TAGS and c.get("class")]
+        if len(kids) < 2:
+            continue
+        sigs = Counter(tuple(sorted(c.get("class"))) for c in kids)
+        for c in kids:
+            if c.has_attr("data-block"):
+                continue
+            if sigs[tuple(sorted(c.get("class")))] < 2:
+                continue
+            has_head = c.find(["h2", "h3", "h4", "h5"]) is not None
+            has_card = has_head or (c.find("img") is not None and c.find("p") is not None)
+            if has_card:
+                c["data-block"] = c.get("class")[0]
+
 def ingest_page(html, slug):
     html = _relativize_assets(html)
     soup = BeautifulSoup(html, "lxml")
@@ -270,6 +293,7 @@ def ingest_page(html, slug):
         jsonld = [str(s) for s in soup.head.find_all("script", type="application/ld+json")]
     # body only for template
     body = soup.body
+    _tag_repeating_blocks(body)
     regions = assign_regions(body)
     n = len(regions)
     template = str(body)
@@ -489,6 +513,12 @@ img[data-eid].ed-over{outline:3px solid #A78C46 !important;outline-offset:2px}
 document.addEventListener('DOMContentLoaded',function(){
   var tb=document.createElement('div'); tb.id='ed-tb'; document.body.appendChild(tb);
   var sel=null; var dragEid=null;
+  // In the editor, links must never navigate (clicking a heading inside a card-link
+  // would otherwise open the linked site). Block all link clicks in the canvas.
+  document.addEventListener('click',function(e){
+    var a=e.target && e.target.closest ? e.target.closest('a') : null;
+    if(a){ e.preventDefault(); }
+  },true);
   function _ar(el){var w=el.clientWidth||el.naturalWidth||1,h=el.clientHeight||el.naturalHeight||1;return (w>0&&h>0)?(w/h):1;}
   function post(m){parent.postMessage(m,'*');}
   function place(el){
