@@ -167,11 +167,24 @@ function AddPageModal({ site, onClose, onDone, flash }) {
       )}
       {mode === "template" && (
         <>
-          <label>Template</label>
-          <select data-testid="addpage-template" value={templateId} onChange={e => setTemplateId(e.target.value)}>
+          <label>Choose a template</label>
+          <div className="tpl-grid" data-testid="template-grid">
+            {templates.map(t => (
+              <button type="button" key={t.id} data-testid={`tpl-card-${t.id}`}
+                className={`tpl-card ${templateId === t.id ? "on" : ""}`}
+                onClick={() => setTemplateId(t.id)}>
+                <div className="tpl-thumb">
+                  <img src={`/template-thumbs/${t.id}.jpg`} alt={t.name}
+                    onError={e => { e.target.style.display = "none"; }} />
+                </div>
+                <div className="tpl-name">{t.name}{templateId === t.id && <span className="tpl-tick">✓</span>}</div>
+              </button>
+            ))}
+          </div>
+          <select data-testid="addpage-template" value={templateId} onChange={e => setTemplateId(e.target.value)} hidden readOnly>
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
-          {templateId && <div className="hint" style={{ marginTop: 4 }}>{templates.find(t => t.id === templateId)?.description}</div>}
+          {templateId && <div className="hint" style={{ marginTop: 8 }}>{templates.find(t => t.id === templateId)?.description}</div>}
           {needsEmail && (
             <>
               <label>{templateId === "contact" ? "Enquiry email (where messages are sent)" : "Enquiry email (where car enquiries are sent)"}</label>
@@ -254,6 +267,72 @@ function FindReplaceModal({ site, onClose, onDone, flash }) {
     </Modal>
   );
 }
+
+function NavMenuModal({ site, onClose, flash }) {
+  const [items, setItems] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const dragIx = useRef(null);
+  const [overIx, setOverIx] = useState(null);
+  useEffect(() => {
+    axios.get(`${API}/sites/${site}/nav`)
+      .then(r => setItems(r.data.items.map(i => i.label)))
+      .catch(() => setItems([]));
+  }, [site]);
+  const move = (from, to) => {
+    if (to < 0 || to >= items.length) return;
+    const next = items.slice();
+    const [it] = next.splice(from, 1);
+    next.splice(to, 0, it);
+    setItems(next); setSaved(false);
+  };
+  const onDrop = (to) => {
+    const from = dragIx.current;
+    if (from !== null && from !== to) move(from, to);
+    dragIx.current = null; setOverIx(null);
+  };
+  const save = async () => {
+    setBusy(true);
+    try {
+      const { data } = await axios.post(`${API}/sites/${site}/nav/reorder`, { order: items });
+      setSaved(true); flash(`Menu order saved across ${data.pages_updated} page${data.pages_updated === 1 ? "" : "s"} — Publish to go live`);
+    } catch (e) { flash(e.response?.data?.detail || "Could not save menu order"); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title={`Menu order — ${site}`} onClose={onClose}>
+      <p className="hint">Drag the items (or use the arrows) to set the order of your navigation menu. The new order is applied to every page. Nothing goes live until you Publish.</p>
+      {items === null ? <div className="hint">Loading…</div>
+        : items.length < 2 ? <div className="hint">This site's menu couldn't be detected automatically, or it has fewer than two links to reorder.</div>
+        : (
+          <ul className="nav-reorder" data-testid="nav-reorder">
+            {items.map((lbl, i) => (
+              <li key={lbl + i} data-testid={`nav-item-${i}`}
+                draggable
+                className={overIx === i ? "over" : ""}
+                onDragStart={() => { dragIx.current = i; }}
+                onDragOver={e => { e.preventDefault(); setOverIx(i); }}
+                onDragLeave={() => setOverIx(o => (o === i ? null : o))}
+                onDrop={() => onDrop(i)}>
+                <span className="grip">⋮⋮</span>
+                <span className="nav-lbl">{lbl}</span>
+                <span className="updown">
+                  <button data-testid={`nav-up-${i}`} disabled={i === 0} onClick={() => move(i, i - 1)} title="Move up">↑</button>
+                  <button data-testid={`nav-down-${i}`} disabled={i === items.length - 1} onClick={() => move(i, i + 1)} title="Move down">↓</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      {saved && <div className="hint" style={{ marginTop: 10, color: "#1f9d55" }}>✓ Saved. Publish the site to push the new menu order live.</div>}
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={onClose}>Close</button>
+        <button className="btn primary" data-testid="nav-save" disabled={busy || !items || items.length < 2} onClick={save}>{busy ? "Saving…" : "Save menu order"}</button>
+      </div>
+    </Modal>
+  );
+}
+
 
 function HelpModal({ onClose }) {
   return (
@@ -659,6 +738,7 @@ function SitesTab({ flash, onSitesChanged }) {
   const [avail, setAvail] = useState([]);
   const [busy, setBusy] = useState("");
   const [editSite, setEditSite] = useState(null);
+  const [navSite, setNavSite] = useState(null);
   const load = () => axios.get(`${API}/available-sites`).then(r => setAvail(r.data));
   useEffect(() => { load(); }, []);
   const ingest = async (slug) => {
@@ -852,6 +932,7 @@ function SitesTab({ flash, onSitesChanged }) {
                 <button className="btn" disabled={busy === s.slug} data-testid={`reimport-${s.slug}`} title="Rebuild every page from the latest source files (discards editor edits)" onClick={() => reimport(s.slug)}>Re-import fresh</button>
               )}
               <button className="btn" data-testid={`edit-site-${s.slug}`} onClick={() => setEditSite({ slug: s.slug, name: s.name || s.slug, domain: s.domain || "" })}>Edit</button>
+              {s.ingested && <button className="btn" data-testid={`menu-${s.slug}`} onClick={() => setNavSite(s.slug)}>Menu</button>}
               {user.role === "superadmin" && (
                 <button className="btn danger" disabled={busy === s.slug} data-testid={`remove-site-${s.slug}`} onClick={() => removeSite(s.slug)}>Remove</button>
               )}
@@ -872,6 +953,7 @@ function SitesTab({ flash, onSitesChanged }) {
           </div>
         </Modal>
       )}
+      {navSite && <NavMenuModal site={navSite} flash={flash} onClose={() => setNavSite(null)} />}
     </div>
   );
 }

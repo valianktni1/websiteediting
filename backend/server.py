@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v17"
+BUILD_VERSION = "2026-06-13-cms-v18"
 
 @api.get("/version")
 async def version():
@@ -1932,6 +1932,61 @@ async def update_site_meta(slug: str, body: SiteMeta, u=Depends(require_admin)):
     if body.domain is not None: upd["domain"] = (body.domain or "").strip().lower()
     if upd: await db.sites.update_one({"slug":slug},{"$set":upd})
     return {"ok":True, **upd}
+
+def _nav_items(container):
+    """Direct children of a nav container that are (or contain) a link — handles both
+    <nav><a></nav> and <ul><li><a></li></ul> style menus."""
+    out=[]
+    for c in container.find_all(recursive=False):
+        if getattr(c,"name",None) is None: continue
+        if c.name=="a" or c.find("a"): out.append(c)
+    return out
+
+def _item_label(item):
+    a = item if item.name=="a" else item.find("a")
+    return (a.get_text() if a else "").strip()
+
+@api.get("/sites/{slug}/nav")
+async def get_nav(slug: str, u=Depends(require_admin)):
+    home = await db.pages.find_one({"site":slug,"slug":"home"}) or await db.pages.find_one({"site":slug})
+    if not home: return {"items": []}
+    soup = BeautifulSoup(home.get("template",""), "lxml")
+    body = soup.body or soup
+    container = _find_nav_container(body.find("header"))
+    if container is None: return {"items": []}
+    items = [{"label": _item_label(it)} for it in _nav_items(container)]
+    return {"items": [i for i in items if i["label"]]}
+
+class NavOrder(BaseModel):
+    order: list[str]
+
+@api.post("/sites/{slug}/nav/reorder")
+async def reorder_nav(slug: str, body: NavOrder, u=Depends(require_admin)):
+    order = [l.strip() for l in body.order]
+    updated = 0
+    async for pg in db.pages.find({"site": slug}):
+        soup = BeautifulSoup(pg.get("template",""), "lxml")
+        b = soup.body or soup
+        container = _find_nav_container(b.find("header"))
+        if container is None: continue
+        items = _nav_items(container)
+        if len(items) < 2: continue
+        bykey = {}
+        for it in items:
+            bykey.setdefault(_item_label(it), []).append(it)
+        ordered = []; seen = set()
+        for lb in order:
+            lst = bykey.get(lb)
+            if lst:
+                it = lst.pop(0); ordered.append(it); seen.add(id(it))
+        for it in items:
+            if id(it) not in seen:
+                ordered.append(it); seen.add(id(it))
+        for it in ordered:
+            container.append(it.extract())
+        await db.pages.update_one({"_id": pg["_id"]}, {"$set": {"template": str(b)}})
+        updated += 1
+    return {"ok": True, "pages_updated": updated}
 
 def scope_ok(u, site):
     return u.get("role")=="admin" or not u.get("site_id") or u["site_id"]==site

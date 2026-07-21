@@ -767,3 +767,20 @@ brand colours/fonts, carry their real header+footer, are fully editable, and aut
 - BACKLOG (tester notes, non-blocking): App.js ~1363 lines (split AddPageModal/Editor); design-submit could
   re-fetch site page count.
 - USER ACTION: rebuild to cms-v17. Add pages via dashboard '+ New page' -> 'From a template'.
+
+## 2026-07-21 (fork) — Template thumbnails + drag-to-reorder nav menu. Build cms-v18.
+Both verified via curl + UI screenshots.
+1. TEMPLATE THUMBNAILS: generated 8 flat-wireframe preview images (gemini) saved to
+   /app/frontend/public/template-thumbs/<key>.jpg (gallery, pricing, services, faq, about, contact,
+   testimonials, used-cars). AddPageModal 'From a template' now shows a visual CARD GRID (.tpl-grid/.tpl-card
+   in App.css) — thumbnail + name, selected card gold border + tick — instead of a plain dropdown (hidden
+   <select> kept for the addpage-template test id). No backend change: thumb URL derived from template id.
+   Also: enquiry-email field now shows for used-cars AND contact templates.
+2. DRAG-TO-REORDER NAV: new NavMenuModal (App.js) opened by a 'Menu' button on each ingested site row
+   (data-testid menu-<slug>). Lists nav items with drag handles + up/down arrows; Save posts the new order.
+   Backend: GET /api/sites/{slug}/nav (reads home page nav container, returns ordered labels) and POST
+   /api/sites/{slug}/nav/reorder {order:[labels]} — reorders the nav items on EVERY page to match (matches
+   by link text/label; handles <nav><a> and <ul><li><a>; regions untouched so edits/eids preserved).
+   Helpers _nav_items/_item_label added near _find_nav_container. Verified: moving 'Gallery' to position 2
+   updated 3 pages incl the car-sales subfolder page; published nav reflects new order.
+- USER ACTION: rebuild to cms-v18. Reorder menu: Admin ▸ Sites ▸ Menu (drag). Add page: visual template cards.
