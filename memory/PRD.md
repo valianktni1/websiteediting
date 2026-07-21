@@ -674,3 +674,27 @@ Superadmin can spin up a whole client site from a finished design ZIP in one flo
   (duplicate slug / non-zip / no-html) all 400 with cleanup (dir + DB doc removed). Frontend form renders +
   opens (screenshot). Test data purged after.
 - USER ACTION: rebuild to cms-v13 → Admin ▸ Sites ▸ "Create a site from a design ZIP".
+
+## 2026-07-21 (fork) — Editor UX batch + Users/Sites edit + SFTP defaults. Build cms-v14.
+Verified 8/8 frontend flows (iteration_17.json, 100%); backend endpoints curl-verified.
+1. IMAGE-REPLACE NO LONGER JUMPS TO TOP: Editor now has reload() (captures iframe scrollY) + onFrameLoad
+   (restores scrollY after the new iframe loads, x3 timed retries). ALL setNonce iframe reloads replaced with
+   reload(), so text edits, image replace, ops, undo & fill-alt all preserve scroll. Same-origin iframe so
+   contentWindow.scrollY is readable. Tester confirmed y=1500 preserved after a reload.
+2. EDITOR LAYOUT — SEO/Help moved to topbar, left panel removed: aside.panel deleted → iframe full width
+   (big win on mobile). Topbar now: ← All pages | Editing | ⚙ SEO title | ? Help | ↶ Undo | Publish.
+   'SEO title' opens a Modal (page title input + Fill missing alt text + Save). 'Help' opens the existing
+   HelpModal (full guide). A slim .dirty-bar shows under the topbar when there are unsaved changes.
+   CSS added: .page-frame.full, .dirty-bar, .modal-label/.modal-input, mobile topbar wrap (@max-width 640px).
+3. USERS EDIT: new PUT /api/users/{uid} (require_admin) updates name/role/site_id/optional password (guards
+   self-demotion). UsersTab row gained 'Edit' → modal (eu-name/eu-role/eu-site/eu-password/eu-save). Remove
+   now hidden for admin AND superadmin.
+4. SITES EDIT: new PUT /api/sites/{slug}/meta (require_admin) updates name+domain. GET /api/available-sites
+   now returns name+domain. SitesTab row shows name + 🔒domain and an 'Edit' → modal (es-name/es-domain/es-save).
+5. HOSTINGER SFTP DEFAULTS (frontend consts SFTP_HOST=77.37.37.182 / SFTP_USER=u897891218 / SFTP_PORT=65002 +
+   rpForDomain()). Both 'New site from a design' and 'Add site (pull)' forms prefill host/port/username; typing
+   the locked domain auto-builds remote path /home/u897891218/domains/<domain>/public_html.
+   BACKLOG (tester): move these to REACT_APP_* env vars so other deployments override without a rebuild.
+- Also delivered clean Apex-free + brand-editable Ribble Valley raw HTML: /api/download/ribble-valley-chequered-flag-editable.zip
+  (brand wordmark pulled out of the logo <a> into plain editable spans in header+footer of both pages).
+- USER ACTION: rebuild to cms-v14. Footer should read UI+API cms-v14.
