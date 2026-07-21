@@ -784,3 +784,14 @@ Both verified via curl + UI screenshots.
    Helpers _nav_items/_item_label added near _find_nav_container. Verified: moving 'Gallery' to position 2
    updated 3 pages incl the car-sales subfolder page; published nav reflects new order.
 - USER ACTION: rebuild to cms-v18. Reorder menu: Admin ▸ Sites ▸ Menu (drag). Add page: visual template cards.
+
+## 2026-07-21 (fork) — Drag-to-reorder the dashboard pages list. Build cms-v19.
+- BACKEND: POST /api/sites/{slug}/pages/reorder {order:[slugs]} (current_user) reorders the site's `order`
+  array by the given slug order (unlisted pages kept at the end). Verified via curl: order persists.
+- FRONTEND: dashboard page-cards are now draggable (HTML5 drag) with a hover ⋮⋮ grip and a gold dashed
+  drag-over highlight (.page-grip / .page-card.drag-over in App.css). Dropping reorders locally and POSTs the
+  new order; clicking a card still opens the editor (drag vs click handled natively). reorderPages() in
+  Dashboard persists + toasts "Page order saved".
+- NOTE: page order affects the dashboard list (and the site `order`/publish sequence); it does NOT change the
+  nav menu order — that's the separate Admin ▸ Sites ▸ Menu tool (cms-v18).
+- USER ACTION: rebuild to cms-v19. Drag page cards on the dashboard to reorder them.

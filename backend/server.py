@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v18"
+BUILD_VERSION = "2026-06-13-cms-v19"
 
 @api.get("/version")
 async def version():
@@ -992,6 +992,25 @@ async def site_pages(slug: str, u=Depends(current_user)):
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
     return s.get("order",[])
+
+class PagesOrder(BaseModel):
+    order: list[str]
+
+@api.post("/sites/{slug}/pages/reorder")
+async def reorder_pages(slug: str, body: PagesOrder, u=Depends(current_user)):
+    s = await db.sites.find_one({"slug":slug})
+    if not s: raise HTTPException(404,"Site not found")
+    cur = s.get("order",[])
+    bykey = {o["slug"]: o for o in cur}
+    new=[]; seen=set()
+    for sl in body.order:
+        if sl in bykey and sl not in seen:
+            new.append(bykey[sl]); seen.add(sl)
+    for o in cur:
+        if o["slug"] not in seen:
+            new.append(o); seen.add(o["slug"])
+    await db.sites.update_one({"slug":slug},{"$set":{"order":new}})
+    return {"ok":True, "count":len(new)}
 
 @api.get("/pages/{slug_site}/{slug}")
 async def get_page(slug_site: str, slug: str, u=Depends(current_user)):

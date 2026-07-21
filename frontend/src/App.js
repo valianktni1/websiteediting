@@ -1043,6 +1043,20 @@ function Dashboard() {
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 4000); };
 
+  const dragPageIx = useRef(null);
+  const [overPageSlug, setOverPageSlug] = useState(null);
+  const reorderPages = async (from, to) => {
+    if (from == null || to == null || from === to || to < 0 || to >= pages.length) return;
+    const next = pages.slice();
+    const [it] = next.splice(from, 1);
+    next.splice(to, 0, it);
+    setPages(next);
+    try {
+      await axios.post(`${API}/sites/${site.slug}/pages/reorder`, { order: next.map(p => p.slug) });
+      flash("Page order saved");
+    } catch (e) { flash("Could not save page order"); loadSites(site.slug); }
+  };
+
   const preview = async () => {
     flash("Building preview…");
     const { data } = await axios.post(`${API}/sites/${site.slug}/preview`);
@@ -1099,8 +1113,16 @@ function Dashboard() {
           </div>
         )}
         <div className="page-grid">
-          {pages.map(p => (
-            <div key={p.slug} className="page-card" data-testid={`page-${p.slug}`} onClick={() => setEditing(p.slug)}>
+          {pages.map((p, idx) => (
+            <div key={p.slug} className={`page-card ${overPageSlug === p.slug ? "drag-over" : ""}`} data-testid={`page-${p.slug}`}
+              draggable
+              onDragStart={(e) => { dragPageIx.current = idx; e.dataTransfer.effectAllowed = "move"; }}
+              onDragOver={(e) => { e.preventDefault(); if (overPageSlug !== p.slug) setOverPageSlug(p.slug); }}
+              onDragLeave={() => setOverPageSlug(s => (s === p.slug ? null : s))}
+              onDrop={(e) => { e.preventDefault(); reorderPages(dragPageIx.current, idx); dragPageIx.current = null; setOverPageSlug(null); }}
+              onDragEnd={() => { dragPageIx.current = null; setOverPageSlug(null); }}
+              onClick={() => setEditing(p.slug)}>
+              <span className="page-grip" title="Drag to reorder" onClick={(e) => e.stopPropagation()}>⋮⋮</span>
               {p.slug !== "home" && (
                 <button className="page-del" data-testid={`del-page-${p.slug}`} title="Delete page" onClick={(e) => delPage(p.slug, e)}>×</button>
               )}
