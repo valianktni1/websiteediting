@@ -10,7 +10,7 @@ from templates_seed import BUILTIN_TEMPLATES
 import bcrypt, jwt
 from bson import ObjectId
 from bs4 import BeautifulSoup
-from bs4.element import Tag, NavigableString
+from bs4.element import Tag, NavigableString, Comment, Doctype, CData, ProcessingInstruction
 from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -331,7 +331,9 @@ def _wrap_loose_text(soup, body):
     Makes almost all visible copy editable on ANY imported site. Skips scripts/styles/svg and
     text that is already the sole content of a normal edit tag (handled as a region already)."""
     for node in list(body.find_all(string=True)):
-        if not isinstance(node, NavigableString):
+        # find_all(string=True) also returns Comment/CData/Doctype (NavigableString subclasses);
+        # only wrap plain visible text, never comments — else <!-- x --> becomes visible <span>x</span>.
+        if type(node) is not NavigableString:
             continue
         if not node.strip():
             continue
@@ -369,6 +371,9 @@ def ingest_page(html, slug):
         jsonld = [str(s) for s in soup.head.find_all("script", type="application/ld+json")]
     # body only for template
     body = soup.body
+    # strip HTML comments so they can never leak as visible text on the published page
+    for c in list(body.find_all(string=lambda s: isinstance(s, Comment))):
+        c.extract()
     _tag_repeating_blocks(body)
     _wrap_loose_text(soup, body)
     regions = assign_regions(body)

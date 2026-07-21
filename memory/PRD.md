@@ -717,3 +717,16 @@ Fix (general — works for ANY site whose logo is an SVG/icon):
 - No new ZIP needed: once the user rebuilds to cms-v15 and re-pulls the clean editable RV files, they can
   click the logo → Replace logo → upload their own PNG/SVG.
 - USER ACTION: rebuild to cms-v15. Footer should read UI+API cms-v15.
+
+## 2026-07-21 (fork) — BUGFIX: HTML comments leaking as visible text on published site. (cms-v15)
+Symptom: live site showed "===== HEADER =====", "===== HERO =====", "MOT", "Servicing" etc as visible text.
+Root cause: _wrap_loose_text used body.find_all(string=True), which ALSO returns bs4 Comment nodes (Comment
+subclasses NavigableString), and the isinstance(node, NavigableString) guard passed them → each
+<!-- ===== HEADER ===== --> got turned into a visible <span class="ivd-txt">===== HEADER =====</span>.
+Fix (two layers): (1) ingest_page now strips ALL HTML comments from the body before processing; (2)
+_wrap_loose_text uses `type(node) is not NavigableString` so Comment/CData/Doctype are never wrapped.
+IMPORTANT: re-ingest PRESERVES existing pages (never rebuilds their template), so the fix only takes effect
+on a FRESH ingest. To clean an already-affected live site: rebuild to cms-v15, then delete the site in the
+editor and re-pull (or use 'New site from a design' with the updated comment-free ZIP), then Publish.
+Also rebuilt /api/download/ribble-valley-chequered-flag-editable.zip with all HTML comments removed (belt &
+braces). Verified: fresh ingest of the ZIP → dist HTML has zero '===== ' leakage, real content intact.
