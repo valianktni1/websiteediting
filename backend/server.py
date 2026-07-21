@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v15"
+BUILD_VERSION = "2026-06-13-cms-v16"
 
 @api.get("/version")
 async def version():
@@ -408,9 +408,11 @@ def _slug_for_relpath(relpath):
         base = base[:-len("/index")]
     return base.replace("/", "__")
 
-async def ingest_site(site_slug):
+async def ingest_site(site_slug, force=False):
     src = os.path.join(SITES_DIR, site_slug)
     if not os.path.isdir(src): return {"total": 0, "added": 0, "preserved": 0}
+    if force and await db.pages.find_one({"site": site_slug}):
+        await create_snapshot(site_slug, "reimport", "Before fresh re-import")
     await db.sites.update_one({"slug":site_slug},{"$set":{"slug":site_slug,"name":site_slug,"source_dir":src,
         "updated_at":datetime.now(timezone.utc).isoformat()}}, upsert=True)
     order=[]
@@ -424,7 +426,7 @@ async def ingest_site(site_slug):
         slug = _slug_for_relpath(relpath)
         fn = os.path.basename(path)
         existing = await db.pages.find_one({"site":site_slug,"slug":slug})
-        if existing:
+        if existing and not force:
             # PRESERVE the user's edits — never overwrite an already-imported page from source.
             # Only refresh routing metadata so subfolder publish keeps working.
             await db.pages.update_one({"site":site_slug,"slug":slug},
@@ -432,6 +434,7 @@ async def ingest_site(site_slug):
             title = existing.get("title", slug)
             preserved += 1
         else:
+            # fresh (new page, or a forced clean re-import that rebuilds the template from source)
             data = ingest_page(open(path,encoding="utf-8").read(), slug)
             data["site"]=site_slug; data["filename"]=fn; data["relpath"]=relpath
             await db.pages.update_one({"site":site_slug,"slug":slug},{"$set":data}, upsert=True)
@@ -924,10 +927,10 @@ async def sites(u=Depends(current_user)):
     return out
 
 @api.post("/sites/{slug}/ingest")
-async def do_ingest(slug: str, u=Depends(require_admin)):
-    res = await ingest_site(slug)
+async def do_ingest(slug: str, force: bool = False, u=Depends(require_admin)):
+    res = await ingest_site(slug, force=force)
     if res["total"]==0: raise HTTPException(404,f"No pages found in {SITES_DIR}/{slug}")
-    return {"ingested":res["total"], "added":res["added"], "preserved":res["preserved"]}
+    return {"ingested":res["total"], "added":res["added"], "preserved":res["preserved"], "force":force}
 
 @api.get("/sites/{slug}/pages")
 async def site_pages(slug: str, u=Depends(current_user)):

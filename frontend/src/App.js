@@ -667,6 +667,13 @@ function SitesTab({ flash, onSitesChanged }) {
     catch (e) { flash("Ingest failed"); }
     finally { setBusy(""); }
   };
+  const reimport = async (slug) => {
+    if (!window.confirm(`Re-import "${slug}" FRESH from its source files?\n\n• Rebuilds every page from the latest files — great for applying fixes.\n• ⚠️ This DISCARDS edits made in the editor (a restore point is saved first, so you can undo).\n• Your LIVE Hostinger site is not touched until you Publish.\n\nContinue?`)) return;
+    setBusy(slug);
+    try { const { data } = await axios.post(`${API}/sites/${slug}/ingest?force=true`); flash(`Re-imported ${data.ingested} page${data.ingested===1?"":"s"} fresh from source — review, then Publish`); load(); onSitesChanged && onSitesChanged(); }
+    catch (e) { flash(e.response?.data?.detail || "Re-import failed"); }
+    finally { setBusy(""); }
+  };
   const removeSite = async (slug) => {
     const typed = window.prompt(`This permanently removes "${slug}" from the editor — its pages, restore points and downloaded files.\n\n⚠️ Your LIVE Hostinger site is NOT touched.\n\nType the site ID "${slug}" to confirm:`);
     if (typed === null) return;
@@ -841,6 +848,9 @@ function SitesTab({ flash, onSitesChanged }) {
               <button className="btn" disabled={busy === s.slug} data-testid={`ingest-${s.slug}`} onClick={() => ingest(s.slug)}>
                 {busy === s.slug ? "Ingesting…" : s.ingested ? "Re-ingest" : "Ingest"}
               </button>
+              {s.ingested && (
+                <button className="btn" disabled={busy === s.slug} data-testid={`reimport-${s.slug}`} title="Rebuild every page from the latest source files (discards editor edits)" onClick={() => reimport(s.slug)}>Re-import fresh</button>
+              )}
               <button className="btn" data-testid={`edit-site-${s.slug}`} onClick={() => setEditSite({ slug: s.slug, name: s.name || s.slug, domain: s.domain || "" })}>Edit</button>
               {user.role === "superadmin" && (
                 <button className="btn danger" disabled={busy === s.slug} data-testid={`remove-site-${s.slug}`} onClick={() => removeSite(s.slug)}>Remove</button>

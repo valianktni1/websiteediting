@@ -730,3 +730,18 @@ on a FRESH ingest. To clean an already-affected live site: rebuild to cms-v15, t
 editor and re-pull (or use 'New site from a design' with the updated comment-free ZIP), then Publish.
 Also rebuilt /api/download/ribble-valley-chequered-flag-editable.zip with all HTML comments removed (belt &
 braces). Verified: fresh ingest of the ZIP → dist HTML has zero '===== ' leakage, real content intact.
+
+## 2026-07-21 (fork) — "Re-import fresh" button. Build cms-v16.
+Gives a one-click way to rebuild a site from its latest source files WITHOUT deleting + re-adding it — so
+fixes like the comment-stripping above apply to an existing site.
+- BACKEND: ingest_site(site_slug, force=False). When force=True it rebuilds EVERY page's template from source
+  (added=all, preserved=0) instead of preserving existing pages; saves a 'reimport' restore point first.
+  Endpoint POST /sites/{slug}/ingest now takes ?force=true.
+- FRONTEND: SitesTab row shows a "Re-import fresh" button (data-testid reimport-<slug>) for ingested sites,
+  next to Re-ingest. Strong confirm dialog explains it DISCARDS editor edits (restore point saved) and that
+  the live site isn't touched until Publish.
+- VERIFIED via curl: non-force ingest preserves an edit; force=true discards it, rebuilds from source
+  (added=2/preserved=0), and creates a 'reimport' snapshot. UI shows the buttons.
+- FIX PATH for the user's leaked-labels site: rebuild to cms-v16 → click "Re-import fresh" on Chequered Flag
+  (comments now stripped on ingest) → Publish. No delete/re-add needed.
+- USER ACTION: rebuild to cms-v16. Footer should read UI+API cms-v16.
