@@ -2010,9 +2010,23 @@ async def create_page_from_template(site: str, body: FromTemplate, u=Depends(cur
     for el in bodyel.find_all(attrs={"data-caption": True}): del el["data-caption"]
     # add this page to its OWN nav (depth 0) before regions are assigned, so the link is editable
     _mk = BeautifulSoup("", "lxml")
+    _STATE = ("active", "current", "is-active", "selected")
     navc0 = _find_nav_container(bodyel.find("header"))
     if navc0 is not None and not _nav_has_link(navc0, slug):
-        _insert_nav_link(navc0, _new_nav_anchor(_mk, navc0, slug, body.title, 0))
+        # clear any "active/current" highlight inherited from the Home page, so the lifted
+        # nav doesn't leave Home wrongly highlighted; then mark THIS page's own link active.
+        active_cls = None
+        for l in navc0.find_all("a"):
+            cur = l.get("class") or []
+            for c in cur:
+                if c.lower() in _STATE: active_cls = c
+            kept = [c for c in cur if c.lower() not in _STATE]
+            if kept: l["class"] = kept
+            elif l.has_attr("class"): del l["class"]
+        a0 = _new_nav_anchor(_mk, navc0, slug, body.title, 0)
+        if active_cls:
+            a0["class"] = (a0.get("class") or []) + [active_cls]
+        _insert_nav_link(navc0, a0)
     regions = assign_regions(bodyel)
     # head: reuse site chrome assets (fonts/css) + brand tokens + template component CSS + JS
     head_assets = list(home.get("head_assets", []))

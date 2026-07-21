@@ -745,3 +745,25 @@ fixes like the comment-stripping above apply to an existing site.
 - FIX PATH for the user's leaked-labels site: rebuild to cms-v16 → click "Re-import fresh" on Chequered Flag
   (comments now stripped on ingest) → Publish. No delete/re-add needed.
 - USER ACTION: rebuild to cms-v16. Footer should read UI+API cms-v16.
+
+## 2026-07-21 (fork) — Page-template LIBRARY (7 templates) + auto-nav. Build cms-v17.
+Verified: testing agent 9/9 flows 100% (iteration_18.json) + curl. All templates adapt to the client's
+brand colours/fonts, carry their real header+footer, are fully editable, and auto-add to the nav.
+- NEW FILE backend/templates_library.py: 7 templates (LIBRARY_TEMPLATES) — Image Gallery (masonry + ~640px
+  lightbox, 9 duplicatable data-block=photo figures w/ editable captions), Pricing (3 tiers), Services (6
+  cards), FAQ (accordion — open in editor, collapsible on live), About (image+story+stats), Contact (mailto
+  form + details + hours), Testimonials (review cards). All namespaced .ivt-* + tokenised var(--brand-*),
+  shared IVT_BASE css + IVT_JS (lightbox + faq, both disabled inside the editor iframe so editing isn't
+  hijacked). templates_seed.py appends LIBRARY_TEMPLATES to BUILTIN_TEMPLATES (seeded on startup).
+- AUTO-NAV (server.py): new helpers _find_nav_container/_new_nav_anchor/_insert_nav_link/_href_at_depth.
+  create_page_from_template now (a) inserts the new page's link into its OWN lifted header (depth 0, marked
+  active, and strips inherited active/current from the other links so Home isn't wrongly highlighted), and
+  (b) inserts a link into EVERY other page's nav (manual fresh eid 'nav<slug>' + a text region so it's
+  editable; href uses ../ per that page's relpath depth — subfolder pages like car-sales get ../slug.html).
+  Idempotent (skips if link already present). delete_page removes any nav links pointing at the deleted page
+  (no dangling menu items) and drops their regions.
+- FRONTEND AddPageModal: enquiry-email input now shows for BOTH used-cars AND contact templates
+  (needsEmail = templateId in ['used-cars','contact']); backend substitutes sales@yourgarage.co.uk.
+- BACKLOG (tester notes, non-blocking): App.js ~1363 lines (split AddPageModal/Editor); design-submit could
+  re-fetch site page count.
+- USER ACTION: rebuild to cms-v17. Add pages via dashboard '+ New page' -> 'From a template'.

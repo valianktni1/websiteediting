@@ -153,7 +153,7 @@ function AddPageModal({ site, onClose, onDone, flash }) {
     } catch (e) { setErr(e.response?.data?.detail || "Could not create page"); }
     finally { setBusy(false); }
   };
-  const isUsedCars = mode === "template" && templates.find(t => t.id === templateId)?.name?.toLowerCase().includes("car");
+  const needsEmail = mode === "template" && ["used-cars", "contact"].includes(templateId);
   return (
     <Modal title="Add a new page" onClose={onClose}>
       <div className="seg" data-testid="addpage-mode">
@@ -172,9 +172,9 @@ function AddPageModal({ site, onClose, onDone, flash }) {
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           {templateId && <div className="hint" style={{ marginTop: 4 }}>{templates.find(t => t.id === templateId)?.description}</div>}
-          {isUsedCars && (
+          {needsEmail && (
             <>
-              <label>Enquiry email (where car enquiries are sent)</label>
+              <label>{templateId === "contact" ? "Enquiry email (where messages are sent)" : "Enquiry email (where car enquiries are sent)"}</label>
               <input data-testid="addpage-enquiry-email" value={enquiryEmail} placeholder="sales@yourgarage.co.uk" onChange={e => setEnquiryEmail(e.target.value)} />
             </>
           )}
