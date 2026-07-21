@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v16"
+BUILD_VERSION = "2026-06-13-cms-v17"
 
 @api.get("/version")
 async def version():
@@ -520,6 +520,61 @@ def _chrome_from_home(home_template):
     header = body.find("header")
     footer = body.find("footer")
     return (str(header) if header else ""), (str(footer) if footer else "")
+
+def _find_nav_container(scope):
+    """Best-effort: find the element inside a header that holds the nav links (the
+    descendant with the most direct <a> children). Returns a bs4 Tag or None."""
+    if scope is None: return None
+    header = scope if getattr(scope, "name", "") == "header" else scope.find("header")
+    root = header or scope
+    best, best_n = None, 0
+    for el in root.find_all(["nav", "ul", "ol", "div"]):
+        n = sum(1 for c in el.find_all("a", recursive=False))
+        if n > best_n:
+            best, best_n = el, n
+    if best_n >= 2:
+        return best
+    nav = root.find("nav")
+    return nav if nav and nav.find("a") else None
+
+def _href_at_depth(slug, depth):
+    return ("../" * max(0, depth)) + f"{slug}.html"
+
+def _nav_has_link(container, slug):
+    for a in container.find_all("a"):
+        h = (a.get("href") or "").split("#")[0].split("?")[0]
+        if h.rstrip("/").endswith(f"{slug}.html"):
+            return True
+    return False
+
+def _new_nav_anchor(soup, container, slug, title, depth):
+    """Build a nav <a> that mimics the existing links' classes, sized/placed sensibly."""
+    links = container.find_all("a", recursive=False) or container.find_all("a")
+    a = soup.new_tag("a")
+    a["href"] = _href_at_depth(slug, depth)
+    a.string = title
+    # copy classes from a plain (non-CTA) existing link so styling matches
+    for l in links:
+        cls = l.get("class") or []
+        joined = " ".join(cls).lower()
+        if not any(k in joined for k in ("btn", "button", "cta", "book", "call", "quote")):
+            clean = [c for c in cls if c.lower() not in ("active", "current", "is-active", "selected")]
+            if clean: a["class"] = clean
+            break
+    return a
+
+def _insert_nav_link(container, a):
+    """Insert the anchor before a trailing CTA button if present, else append."""
+    kids = container.find_all("a", recursive=False)
+    cta = None
+    for l in kids:
+        joined = " ".join(l.get("class") or []).lower()
+        if any(k in joined for k in ("btn", "button", "cta", "book", "quote")):
+            cta = l
+    if cta is not None:
+        cta.insert_before(a)
+    else:
+        container.append(a)
 
 
 async def _page_docs_for(site):
@@ -1953,6 +2008,11 @@ async def create_page_from_template(site: str, body: FromTemplate, u=Depends(cur
     bodyel = BeautifulSoup(body_html, "lxml").body
     for el in bodyel.find_all(attrs={"data-eid": True}): del el["data-eid"]
     for el in bodyel.find_all(attrs={"data-caption": True}): del el["data-caption"]
+    # add this page to its OWN nav (depth 0) before regions are assigned, so the link is editable
+    _mk = BeautifulSoup("", "lxml")
+    navc0 = _find_nav_container(bodyel.find("header"))
+    if navc0 is not None and not _nav_has_link(navc0, slug):
+        _insert_nav_link(navc0, _new_nav_anchor(_mk, navc0, slug, body.title, 0))
     regions = assign_regions(bodyel)
     # head: reuse site chrome assets (fonts/css) + brand tokens + template component CSS + JS
     head_assets = list(home.get("head_assets", []))
@@ -1966,7 +2026,24 @@ async def create_page_from_template(site: str, body: FromTemplate, u=Depends(cur
     await db.pages.insert_one(doc)
     order = s.get("order", []); order.append({"slug": slug, "filename": f"{slug}.html", "title": body.title})
     await db.sites.update_one({"slug": site}, {"$set": {"order": order}})
-    return {"slug": slug}
+    # add a link to this new page into the nav on every OTHER page so the menu matches site-wide
+    nav_added = 0
+    eid = "nav" + re.sub(r'[^a-z0-9]', '', slug)
+    async for pg in db.pages.find({"site": site, "slug": {"$ne": slug}}):
+        soup2 = BeautifulSoup(pg.get("template", ""), "lxml")
+        body2 = soup2.body or soup2
+        navc = _find_nav_container(body2.find("header"))
+        if navc is None or _nav_has_link(navc, slug):
+            continue
+        depth = (pg.get("relpath", "") or "").count("/")
+        a = _new_nav_anchor(soup2, navc, slug, body.title, depth)
+        a["data-eid"] = eid
+        _insert_nav_link(navc, a)
+        regions2 = dict(pg.get("regions") or {})
+        regions2[eid] = {"type": "text", "value": body.title, "href": _href_at_depth(slug, depth), "link": True}
+        await db.pages.update_one({"_id": pg["_id"]}, {"$set": {"template": str(body2), "regions": regions2}})
+        nav_added += 1
+    return {"slug": slug, "nav_added": nav_added}
 
 
 @api.delete("/pages/{site}/{slug}")
@@ -1977,6 +2054,19 @@ async def delete_page(site: str, slug: str, u=Depends(current_user)):
     s = await db.sites.find_one({"slug":site})
     order = [o for o in s.get("order",[]) if o["slug"]!=slug]
     await db.sites.update_one({"slug":site},{"$set":{"order":order}})
+    # remove any nav links pointing at the deleted page so no menu items are left dangling
+    async for pg in db.pages.find({"site":site}):
+        soup2 = BeautifulSoup(pg.get("template",""), "lxml")
+        body2 = soup2.body or soup2
+        removed = []
+        for a in body2.find_all("a"):
+            h = (a.get("href") or "").split("#")[0].split("?")[0]
+            if h.rstrip("/").endswith(f"{slug}.html"):
+                if a.has_attr("data-eid"): removed.append(a["data-eid"])
+                a.decompose()
+        if removed:
+            regions2 = {k:v for k,v in (pg.get("regions") or {}).items() if k not in removed}
+            await db.pages.update_one({"_id":pg["_id"]},{"$set":{"template":str(body2),"regions":regions2}})
     return {"ok":True}
 
 @api.get("/sites/{slug}/backups")

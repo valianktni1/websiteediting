@@ -1,0 +1,37 @@
+{
+  "summary": "cms-v17 page-template library end-to-end validation complete. Created qa-tpl site from the Ribble Valley Chequered Flag design ZIP (home + car-sales ingested). Added 4 pages from templates (Gallery, Pricing, FAQ, Contact), verified all 8 templates listed in AddPageModal, confirmed real header/footer + brand orange (#FF6A00) are applied, nav auto-update works on home + other pages, and delete removes the nav link. All acceptance criteria in the review request passed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "site_zip_ingest": "PASS — Upload of /app/frontend/public/downloads/ribble-valley-chequered-flag-editable.zip via Admin -> Sites -> 'Create a site from a design ZIP' with slug=qa-tpl, name=QA Templates produced '✓ Created qa-tpl — 2 pages ingested' and site pages = ['home','car-sales']. Site switcher exposes 'QA Templates'.",
+    "add_page_modal_templates": "PASS — After clicking + New page and switching to 'From a template', the dropdown lists exactly 8 templates: About / Our Story, Contact, FAQ, Image Gallery, Pricing, Services, Testimonials / Reviews, Used Cars / Stock page.",
+    "gallery_creation_and_render": "PASS — Created gallery page (slug=gallery). Editor iframe loads /api/editor/page/qa-tpl/gallery. Verified in the rendered iframe: h1 = 'A gallery of moments', 9 elements with editable placeholder text 'Add a caption', 10 <img> nodes, brand token --brand-accent=#FF6A00, real Ribble Valley Chequered Flag header + footer present.",
+    "gallery_lightbox_asset": "PASS — Template ships IVT_JS lightbox code (verified in served HTML via curl: 'ivt-lightbox' string present). Lightbox <div> is created lazily by IVT_JS on the published page, so it isn't in the editor DOM until a photo is clicked — expected behaviour.",
+    "nav_auto_update_home": "PASS — Home page nav in the iframe now shows Gallery + FAQ + Contact + (Pricing before deletion). None of the newly-injected links have the 'active' class; only Home/#top remains active on the home page.",
+    "pricing_render": "PASS — 3 tiers rendered ('Starter','Professional','Premium'), ivt-price-name/amt/desc structure present, £ prices present, uses --brand-* tokens, contents are editable via data-eid (data-eid count > 60).",
+    "nav_propagates_to_other_pages": "PASS — Gallery page's nav also contains Pricing, FAQ, Contact links (auto-inserted when those pages were subsequently added). Confirmed via editor HTML fetch of /api/editor/page/qa-tpl/gallery.",
+    "faq_editor_and_accordion_code": "PASS — FAQ template served with data-ivt-faq / aria-expanded markers + IVT_JS accordion script (verified in HTML). Editor variant shows answers open for editing (aria-expanded=true attribute present).",
+    "contact_render_and_branding": "PASS — Contact page uses var(--brand-*) tokens for form styling, brand header/footer applied. Note: the enquiry_email input field was requested via UI but AddPageModal only exposes it for the Used Cars template (isUsedCars branch). The Contact page still gets a working mailto (mailto:sales@ribblevalleychequeredflag.co.uk) derived from the site — not from the value typed. See action_items.",
+    "delete_removes_nav_link": "PASS — Deleting the pricing page via del-page-pricing button (native confirm auto-accepted) removed the page and, when the home page was re-opened in the editor, the 'Pricing' <a> was no longer in the nav (evaluated find-by-text = false).",
+    "editor_regression_topbar": "PASS — editor-back / editor-seo / editor-help / editor-undo / editor-publish-btn all present and clickable on the qa-tpl home editor. Iframe (data-testid=page-frame) loads the branded home page. Clicking a heading dispatches postMessage to the parent (edit path unchanged from cms-v14 which was already regression-verified in iteration_17).",
+    "cleanup": "qa-tpl site deleted via DELETE /api/sites/qa-tpl at end of run. Remaining sites: wifetobe, demo-couk, car-demo, broadfield, ivorydigital."
+  },
+  "critical_code_review_comments": [
+    "AddPageModal.jsx (App.js ~line 156) gates the enquiry_email input behind isUsedCars = name.toLowerCase().includes('car'). The Contact template also accepts enquiry_email at the backend but the UI never shows the input for Contact — so users cannot set a custom enquiry email at page creation. Recommend broadening the gate to templates that expose enquiry_email (either via a template.needs_enquiry_email flag returned from /api/templates, or by matching id in ['used-cars','contact']).",
+    "Minor UX: Admin Settings 'Sites on this app' list showed the newly-ingested qa-tpl as '1 pages' immediately after creation while the dashboard correctly showed 2. This appears to be a stale count read from the create response versus a fresh /api/sites fetch. Non-blocking, but worth a small re-fetch after design-submit success.",
+    "App.js is now 1363 lines — still trending upward. The templates library and page-composition helpers on the backend are namespaced cleanly with .ivt-* / var(--brand-*), so a similar split on the frontend (AddPageModal + Editor as separate files) would help maintainability.",
+    "On chrome-lifted pages (e.g. gallery.html) the original home page 'active' class on the Home/#top link is preserved. So while the newly-injected nav links (Gallery, Pricing, FAQ, Contact) are correctly non-active, the *Home* link stays highlighted as active even when you're viewing gallery/pricing/faq/contact. Consider stripping .active from the lifted header when the current page is not home (helpers _chrome_from_home / _brand_root_style in backend/server.py)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not directly tested; all endpoints exercised through UI + curl returned expected data", "frontend": "100% of requested flows"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 — worked first try (superadmin).",
+  "seed_data_creation": "Created and then deleted 'qa-tpl' site (QA Templates). Also collateral cleanup: removed pages gallery/pricing/faq from wifetobe that were accidentally created during an early run where the site switcher hadn't yet propagated to qa-tpl (fixed by waiting for the option to appear before selecting).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 9 requested scenarios from the review request pass. The 8-template list is complete and correct. Backend server.py helpers _find_nav_container / _insert_nav_link / delete_page cleanup work through the UI. Two small non-blocking observations for future work: (1) Contact template does not expose the enquiry_email input in AddPageModal, and (2) the .active class on the Home link is not stripped when the lifted chrome is applied to child pages. Neither breaks the acceptance criteria.",
+  "test_report_links": []
+}
