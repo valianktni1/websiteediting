@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v13"
+BUILD_VERSION = "2026-06-13-cms-v14"
 
 @api.get("/version")
 async def version():
@@ -191,6 +191,16 @@ class FromTemplate(BaseModel):
     slug: str
     title: str
     enquiry_email: str = ""
+
+class UserUpdate(BaseModel):
+    name: str | None = None
+    role: str | None = None
+    site_id: str | None = None
+    password: str = ""
+
+class SiteMeta(BaseModel):
+    name: str | None = None
+    domain: str | None = None
 
 # ---------------- ingestion ----------------
 def _clean_links(s):
@@ -1793,6 +1803,20 @@ async def delete_user(uid: str, u=Depends(require_admin)):
     await db.users.delete_one({"_id":ObjectId(uid)})
     return {"ok":True}
 
+@api.put("/users/{uid}")
+async def update_user(uid: str, body: UserUpdate, u=Depends(require_admin)):
+    existing = await db.users.find_one({"_id":ObjectId(uid)})
+    if not existing: raise HTTPException(404,"User not found")
+    upd = {}
+    if body.name is not None: upd["name"] = body.name
+    if body.role is not None: upd["role"] = body.role
+    if body.site_id is not None: upd["site_id"] = body.site_id or None
+    if body.password: upd["password_hash"] = hash_pw(body.password)
+    if uid == u["id"] and body.role and body.role not in ("admin","superadmin"):
+        raise HTTPException(400,"You cannot remove your own admin access")
+    if upd: await db.users.update_one({"_id":ObjectId(uid)},{"$set":upd})
+    return {"ok":True}
+
 @api.get("/sites/{slug}/sftp")
 async def get_sftp(slug: str, u=Depends(require_admin)):
     s = await db.sites.find_one({"slug":slug})
@@ -1810,8 +1834,19 @@ async def available_sites(u=Depends(require_admin)):
             p=os.path.join(SITES_DIR,name)
             if os.path.isdir(p) and glob.glob(os.path.join(p,"*.html")):
                 ing = await db.sites.find_one({"slug":name})
-                out.append({"slug":name,"ingested":bool(ing),"pages":len(glob.glob(os.path.join(p,"*.html")))})
+                out.append({"slug":name,"ingested":bool(ing),"pages":len(glob.glob(os.path.join(p,"*.html"))),
+                            "name":(ing or {}).get("name",name),"domain":(ing or {}).get("domain","")})
     return out
+
+@api.put("/sites/{slug}/meta")
+async def update_site_meta(slug: str, body: SiteMeta, u=Depends(require_admin)):
+    s = await db.sites.find_one({"slug":slug})
+    if not s: raise HTTPException(404,"Site not found")
+    upd = {}
+    if body.name is not None: upd["name"] = body.name.strip() or slug
+    if body.domain is not None: upd["domain"] = (body.domain or "").strip().lower()
+    if upd: await db.sites.update_one({"slug":slug},{"$set":upd})
+    return {"ok":True, **upd}
 
 def scope_ok(u, site):
     return u.get("role")=="admin" or not u.get("site_id") or u["site_id"]==site

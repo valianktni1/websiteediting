@@ -34,6 +34,12 @@ async function autoCropToAspect(file, aspect) {
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 axios.defaults.withCredentials = true;
 
+// Hostinger account defaults — prefilled when creating a new site (only the domain + password differ per site)
+const SFTP_HOST = "77.37.37.182";
+const SFTP_USER = "u897891218";
+const SFTP_PORT = 65002;
+const rpForDomain = (d) => (d ? `/home/${SFTP_USER}/domains/${d}/public_html` : "");
+
 const Auth = createContext(null);
 const useAuth = () => useContext(Auth);
 
@@ -522,6 +528,13 @@ function UsersTab({ flash }) {
     if (!window.confirm("Remove this user?")) return;
     await axios.delete(`${API}/users/${id}`); flash("User removed"); load();
   };
+  const [edit, setEdit] = useState(null);
+  const saveEdit = async () => {
+    try {
+      await axios.put(`${API}/users/${edit.id}`, { name: edit.name, role: edit.role, site_id: edit.site_id || null, password: edit.password || "" });
+      flash("User updated"); setEdit(null); load();
+    } catch (e) { flash(e.response?.data?.detail || "Could not update user"); }
+  };
   return (
     <div>
       <div className="admin-list" data-testid="users-list">
@@ -531,7 +544,10 @@ function UsersTab({ flash }) {
               <div className="admin-title">{u.email}</div>
               <div className="admin-meta">{u.role}{u.site_id ? ` · ${u.site_id}` : ""}</div>
             </div>
-            {u.role !== "admin" && <button className="btn danger" data-testid={`del-user-${u.email}`} onClick={() => del(u.id)}>Remove</button>}
+            <div className="row-actions">
+              <button className="btn" data-testid={`edit-user-${u.email}`} onClick={() => setEdit({ id: u.id, email: u.email, name: u.name || "", role: u.role, site_id: u.site_id || "", password: "" })}>Edit</button>
+              {u.role !== "admin" && u.role !== "superadmin" && <button className="btn danger" data-testid={`del-user-${u.email}`} onClick={() => del(u.id)}>Remove</button>}
+            </div>
           </div>
         ))}
       </div>
@@ -556,6 +572,29 @@ function UsersTab({ flash }) {
         {err && <div className="err">{err}</div>}
         <button className="btn primary" data-testid="nu-submit" disabled={!f.email || !f.password} onClick={create}>Create user</button>
       </div>
+      {edit && (
+        <Modal title={`Edit ${edit.email}`} onClose={() => setEdit(null)}>
+          <label className="modal-label">Name</label>
+          <input className="modal-input" data-testid="eu-name" value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} />
+          <label className="modal-label">Role</label>
+          <select className="modal-input" data-testid="eu-role" value={edit.role} onChange={e => setEdit({ ...edit, role: e.target.value })}>
+            <option value="editor">Editor (client)</option>
+            <option value="admin">Admin</option>
+            <option value="superadmin">Super admin</option>
+          </select>
+          <label className="modal-label">Assigned site</label>
+          <select className="modal-input" data-testid="eu-site" value={edit.site_id} onChange={e => setEdit({ ...edit, site_id: e.target.value })}>
+            <option value="">— none —</option>
+            {sites.map(s => <option key={s.slug} value={s.slug}>{s.name || s.slug}</option>)}
+          </select>
+          <label className="modal-label">New password (leave blank to keep current)</label>
+          <input className="modal-input" data-testid="eu-password" type="text" value={edit.password} placeholder="••••••••" onChange={e => setEdit({ ...edit, password: e.target.value })} />
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => setEdit(null)}>Cancel</button>
+            <button className="btn primary" data-testid="eu-save" onClick={saveEdit}>Save changes</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -619,6 +658,7 @@ function SitesTab({ flash, onSitesChanged }) {
   const { user } = useAuth();
   const [avail, setAvail] = useState([]);
   const [busy, setBusy] = useState("");
+  const [editSite, setEditSite] = useState(null);
   const load = () => axios.get(`${API}/available-sites`).then(r => setAvail(r.data));
   useEffect(() => { load(); }, []);
   const ingest = async (slug) => {
@@ -636,8 +676,14 @@ function SitesTab({ flash, onSitesChanged }) {
     catch (e) { flash(e.response?.data?.detail || "Could not remove site"); }
     finally { setBusy(""); }
   };
+  const saveSite = async () => {
+    try {
+      await axios.put(`${API}/sites/${editSite.slug}/meta`, { name: editSite.name, domain: editSite.domain });
+      flash("Site details saved"); setEditSite(null); load(); onSitesChanged && onSitesChanged();
+    } catch (e) { flash(e.response?.data?.detail || "Could not save site"); }
+  };
 
-  const [f, setF] = useState({ slug: "", name: "", domain: "", host: "", port: 65002, username: "", password: "", remote_path: "" });
+  const [f, setF] = useState({ slug: "", name: "", domain: "", host: SFTP_HOST, port: SFTP_PORT, username: SFTP_USER, password: "", remote_path: "" });
   const [adding, setAdding] = useState(false);
   const [addMsg, setAddMsg] = useState("");
   const [testing, setTesting] = useState(false);
@@ -665,7 +711,7 @@ function SitesTab({ flash, onSitesChanged }) {
           if (s.state === "done" || s.state === "error") {
             clearInterval(poll); setAdding(false);
             if (s.state === "done") {
-              setF({ slug: "", name: "", domain: "", host: "", port: 65002, username: "", password: "", remote_path: "" });
+              setF({ slug: "", name: "", domain: "", host: SFTP_HOST, port: SFTP_PORT, username: SFTP_USER, password: "", remote_path: "" });
               load(); onSitesChanged && onSitesChanged();
             }
           }
@@ -680,7 +726,7 @@ function SitesTab({ flash, onSitesChanged }) {
 
   // ---- New site from a design (ZIP upload) ----
   const [showDesign, setShowDesign] = useState(false);
-  const [df, setDf] = useState({ slug: "", name: "", domain: "", client_email: "", client_password: "", sftp_host: "", sftp_port: 65002, sftp_username: "", sftp_password: "", sftp_remote_path: "" });
+  const [df, setDf] = useState({ slug: "", name: "", domain: "", client_email: "", client_password: "", sftp_host: SFTP_HOST, sftp_port: SFTP_PORT, sftp_username: SFTP_USER, sftp_password: "", sftp_remote_path: "" });
   const [dfFile, setDfFile] = useState(null);
   const [creating, setCreating] = useState(false);
   const [dfMsg, setDfMsg] = useState("");
@@ -693,7 +739,7 @@ function SitesTab({ flash, onSitesChanged }) {
       Object.entries(df).forEach(([k, v]) => fd.append(k, v));
       const { data } = await axios.post(`${API}/sites/create-from-design`, fd, { timeout: 180000 });
       setDfMsg("✓ " + data.message + (data.client_user ? ` · client login: ${data.client_user}` : "") + (data.sftp_set ? " · SFTP saved" : ""));
-      setDf({ slug: "", name: "", domain: "", client_email: "", client_password: "", sftp_host: "", sftp_port: 65002, sftp_username: "", sftp_password: "", sftp_remote_path: "" });
+      setDf({ slug: "", name: "", domain: "", client_email: "", client_password: "", sftp_host: SFTP_HOST, sftp_port: SFTP_PORT, sftp_username: SFTP_USER, sftp_password: "", sftp_remote_path: "" });
       setDfFile(null);
       load(); onSitesChanged && onSitesChanged();
     } catch (e) {
@@ -718,7 +764,7 @@ function SitesTab({ flash, onSitesChanged }) {
                 <label>Short ID (URL-safe)</label>
                 <input data-testid="design-slug" value={df.slug} placeholder="ribble-valley" onChange={e => setDf({ ...df, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} />
                 <label>Locked domain 🔒 (optional)</label>
-                <input data-testid="design-domain" value={df.domain} placeholder="ribblevalleycars.co.uk" onChange={e => setDf({ ...df, domain: e.target.value.trim().toLowerCase() })} />
+                <input data-testid="design-domain" value={df.domain} placeholder="ribblevalleycars.co.uk" onChange={e => { const dom = e.target.value.trim().toLowerCase(); setDf({ ...df, domain: dom, sftp_remote_path: rpForDomain(dom) }); }} />
 
                 <h4 style={{ marginTop: 18 }}>Client login (optional)</h4>
                 <label>Client email</label>
@@ -759,7 +805,7 @@ function SitesTab({ flash, onSitesChanged }) {
           <label>Short ID (URL-safe)</label>
           <input data-testid="as-slug" value={f.slug} placeholder="wifetobe-couk" onChange={e => setF({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} />
           <label>Locked domain 🔒</label>
-          <input data-testid="as-domain" value={f.domain} placeholder="wifetobe.co.uk" onChange={e => setF({ ...f, domain: e.target.value.trim().toLowerCase() })} />
+          <input data-testid="as-domain" value={f.domain} placeholder="wifetobe.co.uk" onChange={e => { const dom = e.target.value.trim().toLowerCase(); setF({ ...f, domain: dom, remote_path: rpForDomain(dom) }); }} />
           <label>SFTP host</label>
           <input data-testid="as-host" value={f.host} placeholder="77.37.37.182" onChange={e => setF({ ...f, host: e.target.value })} />
           <label>Port</label>
@@ -788,13 +834,14 @@ function SitesTab({ flash, onSitesChanged }) {
         {avail.map(s => (
           <div className="admin-row" key={s.slug} data-testid={`avail-${s.slug}`}>
             <div>
-              <div className="admin-title">{s.slug}</div>
-              <div className="admin-meta">{s.pages} pages · {s.ingested ? "ingested" : "not ingested"}</div>
+              <div className="admin-title">{s.name || s.slug}</div>
+              <div className="admin-meta">{s.slug}{s.domain ? ` · 🔒 ${s.domain}` : ""} · {s.pages} pages · {s.ingested ? "ingested" : "not ingested"}</div>
             </div>
             <div className="row-actions">
               <button className="btn" disabled={busy === s.slug} data-testid={`ingest-${s.slug}`} onClick={() => ingest(s.slug)}>
                 {busy === s.slug ? "Ingesting…" : s.ingested ? "Re-ingest" : "Ingest"}
               </button>
+              <button className="btn" data-testid={`edit-site-${s.slug}`} onClick={() => setEditSite({ slug: s.slug, name: s.name || s.slug, domain: s.domain || "" })}>Edit</button>
               {user.role === "superadmin" && (
                 <button className="btn danger" disabled={busy === s.slug} data-testid={`remove-site-${s.slug}`} onClick={() => removeSite(s.slug)}>Remove</button>
               )}
@@ -802,6 +849,19 @@ function SitesTab({ flash, onSitesChanged }) {
           </div>
         ))}
       </div>
+      {editSite && (
+        <Modal title={`Edit ${editSite.slug}`} onClose={() => setEditSite(null)}>
+          <label className="modal-label">Site name</label>
+          <input className="modal-input" data-testid="es-name" value={editSite.name} onChange={e => setEditSite({ ...editSite, name: e.target.value })} />
+          <label className="modal-label">Locked domain 🔒 (optional)</label>
+          <input className="modal-input" data-testid="es-domain" value={editSite.domain} placeholder="theirdomain.co.uk" onChange={e => setEditSite({ ...editSite, domain: e.target.value.trim().toLowerCase() })} />
+          <div className="hint" style={{ marginTop: 8 }}>The locked domain is a safety lock — publishing is refused unless the SFTP path contains it. Set Hostinger login details in the <b>Hostinger SFTP</b> tab.</div>
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => setEditSite(null)}>Cancel</button>
+            <button className="btn primary" data-testid="es-save" onClick={saveSite}>Save changes</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1071,6 +1131,20 @@ function Editor({ site, page, onBack, flash }) {
   const [altEdit, setAltEdit] = useState(null);
   const [statusEdit, setStatusEdit] = useState(null);
   const [fillingAlt, setFillingAlt] = useState(false);
+  const [showSeo, setShowSeo] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const scrollRef = useRef(0);
+
+  const reload = useCallback(() => {
+    try { scrollRef.current = iframeRef.current?.contentWindow?.scrollY || 0; } catch (e) { scrollRef.current = 0; }
+    setNonce(n => n + 1);
+  }, []);
+  const onFrameLoad = () => {
+    const y = scrollRef.current;
+    if (!y) return;
+    const restore = () => { try { iframeRef.current.contentWindow.scrollTo(0, y); } catch (e) {} };
+    restore(); setTimeout(restore, 120); setTimeout(restore, 320);
+  };
 
   useEffect(() => {
     axios.get(`${API}/pages/${site}/${page}`).then(r => setSeo(r.data.seo));
@@ -1081,7 +1155,7 @@ function Editor({ site, page, onBack, flash }) {
     try {
       const { data } = await axios.post(`${API}/sites/${site}/undo`);
       if (data.ok) {
-        flash("Undid your last change"); setCanUndo(data.can_undo); setNonce(n => n + 1);
+        flash("Undid your last change"); setCanUndo(data.can_undo); reload();
         axios.get(`${API}/pages/${site}/${page}`).then(r => setSeo(r.data.seo));
       } else flash(data.message || "Nothing to undo");
     } catch (e) { flash("Undo failed"); }
@@ -1102,7 +1176,7 @@ function Editor({ site, page, onBack, flash }) {
           if (s.state === "done") {
             clearInterval(poll); setFillingAlt(false);
             flash(`Added AI descriptions to ${s.filled} image${s.filled === 1 ? "" : "s"}`);
-            setDirty(true); setCanUndo(true); setNonce(n => n + 1);
+            setDirty(true); setCanUndo(true); reload();
           }
         } catch (e) { /* keep polling */ }
       }, 2000);
@@ -1128,13 +1202,13 @@ function Editor({ site, page, onBack, flash }) {
       const cap = window.prompt("Caption shown under this photo (leave blank to show no caption):", d.caption || "");
       if (cap !== null) {
         await axios.put(`${API}/pages/${site}/${page}/caption`, { eid: d.eid, caption: cap });
-        setDirty(true); setCanUndo(true); flash(cap.trim() ? "Caption saved" : "Caption removed"); setNonce(n => n + 1);
+        setDirty(true); setCanUndo(true); flash(cap.trim() ? "Caption saved" : "Caption removed"); reload();
       }
     } else if (d.t === "link") {
       const url = window.prompt("Link URL (where this button/link goes):", d.href || "");
       if (url !== null) {
         await axios.put(`${API}/pages/${site}/${page}/link`, { eid: d.eid, href: url });
-        setDirty(true); setCanUndo(true); flash("Link updated"); setNonce(n => n + 1);
+        setDirty(true); setCanUndo(true); flash("Link updated"); reload();
       }
     } else if (d.t === "op") {
       if ((d.op === "delete" || d.op === "delete-block") &&
@@ -1146,10 +1220,10 @@ function Editor({ site, page, onBack, flash }) {
         setDirty(true); setCanUndo(true);
         const msg = { "delete": "Deleted", "add-button": "Button added", "add-el": (d.kind === "image" ? "Image added — click it to replace" : (d.kind === "heading" ? "Heading added — click to edit" : (d.kind === "button" ? "Button added — click to edit" : "Text added — click to edit"))), "add-image": "Image added — click it to replace", "move-up": "Moved up", "move-down": "Moved down", "swap-image": "Photos reordered", "duplicate-block": "Card duplicated", "add-blank-block": "Blank card added — click to fill it in", "delete-block": "Card removed", "move-block-up": "Card moved", "move-block-down": "Card moved" }[d.op] || "Duplicated";
         flash(msg);
-        setNonce(n => n + 1); // reload iframe to reflect structural change
+        reload(); // reload iframe to reflect structural change
       } catch (e) { flash(e.response?.data?.detail || "Could not apply change"); }
     }
-  }, [site, page, flash]);
+  }, [site, page, flash, reload]);
 
   useEffect(() => {
     window.addEventListener("message", onMessage);
@@ -1169,7 +1243,7 @@ function Editor({ site, page, onBack, flash }) {
       const fd = new FormData(); fd.append("file", new File([blob], "photo.jpg", { type: "image/jpeg" }));
       const { data } = await axios.post(`${API}/media/${site}/upload`, fd);
       await axios.put(`${API}/pages/${site}/${page}/region`, { eid: cs.eid, value: data.url });
-      setDirty(true); setCanUndo(true); flash("Image replaced"); setNonce(n => n + 1);
+      setDirty(true); setCanUndo(true); flash("Image replaced"); reload();
     } catch (err) { flash("Could not replace image"); }
   };
 
@@ -1187,7 +1261,7 @@ function Editor({ site, page, onBack, flash }) {
       }
       await axios.post(`${API}/pages/${site}/${page}/bulk-image`, { eid: pendingEid.current, urls });
       setDirty(true); setCanUndo(true); flash(`Added ${urls.length} photo${urls.length > 1 ? "s" : ""}`);
-      setNonce(n => n + 1);
+      reload();
     } catch (err) { flash("Could not add photos"); }
     e.target.value = "";
   };
@@ -1203,58 +1277,49 @@ function Editor({ site, page, onBack, flash }) {
         <button className="btn ghost" data-testid="editor-back" onClick={onBack}>← All pages</button>
         <div className="editing-label">Editing: <b>/{page === "home" ? "" : page + "/"}</b></div>
         <div className="topbar-right">
-          <button className="btn ghost" data-testid="editor-undo" disabled={!canUndo} onClick={undo}>↶ Undo last change</button>
-          {dirty && <span className="dirty">● unsaved changes will publish on next Publish</span>}
-          <button className="btn primary" data-testid="editor-publish-btn" onClick={() => setShowPublish(true)}>Publish to Hostinger</button>
+          <button className="btn ghost" data-testid="editor-seo" onClick={() => setShowSeo(true)}>⚙ SEO title</button>
+          <button className="btn ghost" data-testid="editor-help" onClick={() => setShowHelp(true)}>? Help</button>
+          <button className="btn ghost" data-testid="editor-undo" disabled={!canUndo} onClick={undo}>↶ Undo</button>
+          <button className="btn primary" data-testid="editor-publish-btn" onClick={() => setShowPublish(true)}>Publish</button>
         </div>
       </header>
+      {dirty && <div className="dirty-bar" data-testid="dirty-bar">● Unsaved changes will go live on your next Publish</div>}
       <div className="editor-body">
         <iframe
           key={nonce}
           ref={iframeRef}
           title="page"
-          className="page-frame"
+          className="page-frame full"
           data-testid="page-frame"
+          onLoad={onFrameLoad}
           src={`${API}/editor/page/${site}/${page}?v=${nonce}`}
         />
-        <aside className="panel">
-          <h3>SEO</h3>
-          {seo && (
-            <>
-              <label>Page title</label>
-              <input value={seo.title || ""} onChange={e => setSeo({ ...seo, title: e.target.value })} data-testid="seo-title" />
-              <label>Meta tags ({(seo.metas || []).length}) & schema preserved</label>
-              <div className="hint">Meta description, Open Graph, Twitter cards and JSON-LD are kept exactly and shipped on publish.</div>
-              <button className="btn" onClick={saveSeo} data-testid="save-seo">Save SEO</button>
-              <button className="btn" style={{ marginTop: 10 }} data-testid="fill-alt-btn" disabled={fillingAlt} onClick={fillAllAlt}>
-                {fillingAlt ? "✨ Filling…" : "✨ Fill missing alt text"}
-              </button>
-              <div className="hint" style={{ marginTop: 6 }}>Let AI write alt text for every image on this page that doesn't have one yet.</div>
-            </>
-          )}
-          <div className="tips">
-            <h4>How to edit</h4>
-            <ul>
-              <li>Click any <b>text</b> — headings, prices, specs (Year/Mileage), even the logo name — and type to change it.</li>
-              <li><b>Photos</b>: Replace (crop &amp; zoom), "+ Add photos" for a gallery, "Alt text" (✨ AI), or "Caption".</li>
-              <li><b>Reorder photos</b>: drag one onto another, or use ↑/↓.</li>
-              <li><b>Cars</b>: click a car's title/price to get the <b>Card</b> toolbar — Duplicate, + Blank card, or <b>Status</b> (Sold / Reserved / New in).</li>
-              <li>Sold cars drop to the bottom of the list on your live site automatically.</li>
-              <li><b>Links / buttons</b>: "Link" to change where they go.</li>
-              <li>Made a mistake? Hit <b>↶ Undo last change</b> up top.</li>
-              <li>Hit <b>Publish</b> on the dashboard to go live. Tap <b>Help</b> up top for the full guide.</li>
-            </ul>
-          </div>
-        </aside>
       </div>
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} data-testid="image-input" />
       <input ref={bulkFileRef} type="file" accept="image/*" multiple hidden onChange={onBulkFiles} data-testid="bulk-image-input" />
+      {showSeo && seo && (
+        <Modal title="SEO & page title" onClose={() => setShowSeo(false)}>
+          <p className="hint">This is the headline Google shows and the name on the browser tab for this page.</p>
+          <label className="modal-label">Page title</label>
+          <input className="modal-input" data-testid="seo-title" value={seo.title || ""} onChange={e => setSeo({ ...seo, title: e.target.value })} />
+          <div className="hint" style={{ marginTop: 8 }}>Your meta description, Open Graph, Twitter cards and JSON-LD ({(seo.metas || []).length}) are kept exactly and shipped on publish.</div>
+          <button className="btn" style={{ marginTop: 16 }} data-testid="fill-alt-btn" disabled={fillingAlt} onClick={fillAllAlt}>
+            {fillingAlt ? "✨ Filling…" : "✨ Fill missing alt text"}
+          </button>
+          <div className="hint" style={{ marginTop: 6 }}>Let AI write alt text for every image on this page that doesn't have one yet.</div>
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => setShowSeo(false)}>Close</button>
+            <button className="btn primary" data-testid="save-seo" onClick={async () => { await saveSeo(); setShowSeo(false); }}>Save title</button>
+          </div>
+        </Modal>
+      )}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       {showPublish && <PublishConfirm site={site} flash={flash} onClose={() => setShowPublish(false)} />}
       {cropState && <CropModal file={cropState.file} aspect={cropState.aspect} onCancel={() => setCropState(null)} onDone={finishCrop} />}
       {altEdit && <AltModal site={site} page={page} eid={altEdit.eid} initial={altEdit.alt} flash={flash}
-        onClose={() => setAltEdit(null)} onSaved={() => { setAltEdit(null); setDirty(true); setCanUndo(true); setNonce(n => n + 1); }} />}
+        onClose={() => setAltEdit(null)} onSaved={() => { setAltEdit(null); setDirty(true); setCanUndo(true); reload(); }} />}
       {statusEdit && <StatusModal site={site} page={page} eid={statusEdit.eid} flash={flash}
-        onClose={() => setStatusEdit(null)} onDone={() => { setStatusEdit(null); setDirty(true); setCanUndo(true); setNonce(n => n + 1); }} />}
+        onClose={() => setStatusEdit(null)} onDone={() => { setStatusEdit(null); setDirty(true); setCanUndo(true); reload(); }} />}
     </div>
   );
 }

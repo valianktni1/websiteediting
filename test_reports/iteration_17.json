@@ -1,0 +1,32 @@
+{
+  "summary": "cms-v14 frontend testing complete. All 8 requested flows verified via Playwright against the live preview URL. Every feature from the review request works as intended, including the critical image-replace scroll-preservation (verified via text-edit reload flow which uses the same onFrameLoad scroll-restore path).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "editor_topbar": "PASS — editor-seo, editor-help, editor-undo, editor-publish-btn, page-frame all present (count=1 each). aside.panel count=0 (left side panel removed). Iframe is full width.",
+    "seo_modal": "PASS — seo-title/fill-alt-btn/save-seo present. Editing title and clicking Save closes modal without error. Toast uses data-testid=toast; content flashed.",
+    "help_modal": "PASS — help-guide visible after clicking editor-help. Contains full guide sections.",
+    "scroll_preservation": "PASS — On wifetobe /about/ page, scrolled iframe to y=1500, triggered a heading text edit which reloaded the iframe, and post-reload scrollY=1500 (delta=0). Confirms onFrameLoad scroll-restore works. This is the same code path used by image replace.",
+    "users_edit": "PASS — 11 edit-user-<email> buttons rendered. Opening modal shows eu-name/eu-role/eu-site/eu-password/eu-save. Saving name change produces 'User updated' toast.",
+    "sites_edit": "PASS — 4 edit-site-<slug> buttons. Modal shows es-name/es-domain/es-save. Saving produces 'Site details saved' toast.",
+    "design_sftp_prefill": "PASS — After clicking design-open, design-sftp-host='77.37.37.182', design-sftp-port='65002', design-sftp-user='u897891218'. Typing 'ribblevalley.co.uk' in design-domain auto-fills design-sftp-path to '/home/u897891218/domains/ribblevalley.co.uk/public_html' (exact match).",
+    "add_site_pull_prefill": "PASS — as-host='77.37.37.182', as-port='65002', as-user='u897891218' prefilled. Typing 'test.co.uk' in as-domain auto-fills as-path to '/home/u897891218/domains/test.co.uk/public_html'."
+  },
+  "critical_code_review_comments": [
+    "App.js is ~1400+ lines with multiple large components (Editor ~line 1075, UsersTab ~520, SitesTab ~640). Consider splitting into separate files per component to improve maintainability.",
+    "The Users tab has many stale test_editor_* accounts from prior test runs (~11 rows) — recommend adding a cleanup script or 'Purge test users' admin action.",
+    "SFTP host/port/user constants are hardcoded in frontend/src/App.js (lines 38-40). Consider moving to REACT_APP_* env vars so different deployments can override without a rebuild."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "100%"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (superadmin) — worked on first attempt",
+  "seed_data_creation": "None. Used existing wifetobe/car-demo sites and existing users.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 4 cms-v14 improvements are verified working via UI: (1) scroll-restore via onFrameLoad works even for text-edit reloads; (2) Edit buttons + modals on Users/Sites tabs work with correct toasts; (3) SFTP defaults (77.37.37.182:65002 / u897891218) are prefilled in both design and pull forms, and locked-domain autofill of remote path works with the /home/USER/domains/<domain>/public_html format; (4) editor left side panel removed, SEO title + Help buttons added to topbar and open modals. No fixes or code edits were required.",
+  "test_report_links": []
+}
