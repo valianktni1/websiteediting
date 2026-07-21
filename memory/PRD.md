@@ -698,3 +698,22 @@ Verified 8/8 frontend flows (iteration_17.json, 100%); backend endpoints curl-ve
 - Also delivered clean Apex-free + brand-editable Ribble Valley raw HTML: /api/download/ribble-valley-chequered-flag-editable.zip
   (brand wordmark pulled out of the logo <a> into plain editable spans in header+footer of both pages).
 - USER ACTION: rebuild to cms-v14. Footer should read UI+API cms-v14.
+
+## 2026-07-21 (fork) — Replace SVG logo with an image. Build cms-v15.
+Problem: clicking the site logo in the editor did nothing useful — the logo is an inline <svg>, and the
+editor's Replace only worked on <img> tags, so users got odd Add/Link options ("weird").
+Fix (general — works for ANY site whose logo is an SVG/icon):
+- EDITOR_INJECT: when the selected element contains an <svg> and no <img>, a 'Replace logo' button is added
+  to the toolbar (posts {t:'logo', eid}).
+- Frontend: t==='logo' opens a dedicated hidden file input (logoFileRef, accept image/*,.svg) → uploads raw
+  (no crop — logos keep their shape/transparency via optimize_image WebP-RGBA / SVG passthrough) → POST
+  /pages/{site}/{page}/op {op:'set-logo', eid, url} → reload (scroll preserved).
+- Backend page_op 'set-logo' (PageOp gained url field): bakes current regions, finds target by eid, replaces
+  its inner <svg> with <img class=<svg's class> alt="Logo" style="max-height:56px;width:auto;object-fit:contain">
+  (or updates an existing <img>, or appends if neither). assign_regions then makes the new <img> a normal
+  IMAGE region, so clicking it again gives the standard Replace/Alt/Caption toolbar. Snapshot + undo pushed.
+- VERIFIED end-to-end via curl (svg count 26→25, brand-logo now has <img>, region type=image, editor renders
+  the uploaded webp) and via UI screenshot (toolbar shows 'Replace logo' on the RV checkered-flag logo).
+- No new ZIP needed: once the user rebuilds to cms-v15 and re-pulls the clean editable RV files, they can
+  click the logo → Replace logo → upload their own PNG/SVG.
+- USER ACTION: rebuild to cms-v15. Footer should read UI+API cms-v15.

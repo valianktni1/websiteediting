@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v14"
+BUILD_VERSION = "2026-06-13-cms-v15"
 
 @api.get("/version")
 async def version():
@@ -143,6 +143,7 @@ class PageOp(BaseModel):
     eid: str
     ref: str | None = None
     kind: str | None = None
+    url: str | None = None
 class AltSuggest(BaseModel):
     eid: str
 class CaptionUpdate(BaseModel):
@@ -700,6 +701,11 @@ document.addEventListener('DOMContentLoaded',function(){
     if(isLink && !blk){
       tb.appendChild(mk('Link',function(){post({t:'link',eid:eid,href:el.getAttribute('href')||''});}));
     }
+    var _hasSvg = (el.tagName && el.tagName.toLowerCase()==='svg') || (el.querySelector && el.querySelector('svg'));
+    var _hasImg = isImg || (el.querySelector && el.querySelector('img'));
+    if(_hasSvg && !_hasImg){
+      tb.appendChild(mk('Replace logo',function(){post({t:'logo',eid:eid});}));
+    }
     if(!blk){
       tb.appendChild(mk('\u2191 Up',function(){post({t:'op',op:'move-up',eid:eid});}));
       tb.appendChild(mk('\u2193 Down',function(){post({t:'op',op:'move-down',eid:eid});}));
@@ -1059,7 +1065,7 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
-    if body.op not in ("duplicate","delete","add-image","add-button","add-el","move-up","move-down","swap-image","duplicate-block","delete-block","add-blank-block","move-block-up","move-block-down","status-sold","status-reserved","status-new","status-clear"):
+    if body.op not in ("duplicate","delete","add-image","add-button","add-el","move-up","move-down","swap-image","duplicate-block","delete-block","add-blank-block","move-block-up","move-block-down","status-sold","status-reserved","status-new","status-clear","set-logo"):
         raise HTTPException(400,"Unknown operation")
     if body.op == "swap-image":
         r1 = p.get("regions",{}).get(body.eid); r2 = p.get("regions",{}).get(body.ref or "")
@@ -1174,6 +1180,22 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
         st = {"status-sold":"sold","status-reserved":"reserved","status-new":"new"}.get(body.op)
         if st: block["data-status"] = st
         elif block.has_attr("data-status"): del block["data-status"]
+    elif body.op == "set-logo":
+        if not body.url: raise HTTPException(400,"No logo image was provided")
+        new = soup.new_tag("img"); new["src"] = body.url; new["alt"] = "Logo"
+        svg = target if target.name == "svg" else target.find("svg")
+        if svg is not None:
+            svgcls = svg.get("class")
+            if svgcls: new["class"] = svgcls
+            new["style"] = "height:auto;max-height:56px;width:auto;display:block;object-fit:contain"
+            svg.replace_with(new)
+        else:
+            img = target if target.name == "img" else target.find("img")
+            if img is not None:
+                _apply_image(img, body.url, "Logo")
+            else:
+                new["style"] = "height:auto;max-height:56px;width:auto;display:block;object-fit:contain"
+                target.append(new)
     regions = assign_regions(bodyel)
     await db.pages.update_one({"_id":p["_id"]},{"$set":{"template":str(bodyel),"regions":regions}})
     return {"ok":True}

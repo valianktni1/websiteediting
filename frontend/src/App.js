@@ -1120,6 +1120,7 @@ function Editor({ site, page, onBack, flash }) {
   const iframeRef = useRef(null);
   const fileRef = useRef(null);
   const bulkFileRef = useRef(null);
+  const logoFileRef = useRef(null);
   const pendingEid = useRef(null);
   const pendingAspect = useRef(1);
   const [seo, setSeo] = useState(null);
@@ -1194,6 +1195,9 @@ function Editor({ site, page, onBack, flash }) {
     } else if (d.t === "bulk-image") {
       pendingEid.current = d.eid; pendingAspect.current = d.ar || 1;
       bulkFileRef.current?.click();
+    } else if (d.t === "logo") {
+      pendingEid.current = d.eid;
+      logoFileRef.current?.click();
     } else if (d.t === "alt") {
       setAltEdit({ eid: d.eid, alt: d.alt || "" });
     } else if (d.t === "status") {
@@ -1234,6 +1238,17 @@ function Editor({ site, page, onBack, flash }) {
     const f = e.target.files?.[0]; if (!f) return;
     setCropState({ file: f, aspect: pendingAspect.current, eid: pendingEid.current });
     e.target.value = "";
+  };
+
+  const onLogoFile = async (e) => {
+    const f = e.target.files?.[0]; if (!f) return; e.target.value = "";
+    flash("Uploading logo…");
+    try {
+      const fd = new FormData(); fd.append("file", f);
+      const { data } = await axios.post(`${API}/media/${site}/upload`, fd);
+      await axios.post(`${API}/pages/${site}/${page}/op`, { op: "set-logo", eid: pendingEid.current, url: data.url });
+      setDirty(true); setCanUndo(true); flash("Logo replaced — click it again to swap or resize"); reload();
+    } catch (err) { flash(err.response?.data?.detail || "Could not replace the logo"); }
   };
 
   const finishCrop = async (blob) => {
@@ -1297,6 +1312,7 @@ function Editor({ site, page, onBack, flash }) {
       </div>
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} data-testid="image-input" />
       <input ref={bulkFileRef} type="file" accept="image/*" multiple hidden onChange={onBulkFiles} data-testid="bulk-image-input" />
+      <input ref={logoFileRef} type="file" accept="image/*,.svg" hidden onChange={onLogoFile} data-testid="logo-input" />
       {showSeo && seo && (
         <Modal title="SEO & page title" onClose={() => setShowSeo(false)}>
           <p className="hint">This is the headline Google shows and the name on the browser tab for this page.</p>
