@@ -795,3 +795,12 @@ Both verified via curl + UI screenshots.
 - NOTE: page order affects the dashboard list (and the site `order`/publish sequence); it does NOT change the
   nav menu order — that's the separate Admin ▸ Sites ▸ Menu tool (cms-v18).
 - USER ACTION: rebuild to cms-v19. Drag page cards on the dashboard to reorder them.
+
+## Changelog — 2026-06 (fork)
+- **Broadfield Motor Company site cleanup (DONE, visually verified):**
+  - Replaced the split "Two Wheels / Four Wheels" hero with a full-width cinematic Alfa Romeo hero (old-design style): logo used as the badge, "Broadfield Motor Company" heading, "Alfa Romeo & quality used-car specialists" tagline, phone numbers, CTAs.
+  - Removed ALL motorbike content (bikes showcase, Harley/Yamaha/Kawasaki/Triumph cards, bike nav/footer/marquee/form references).
+  - Removed the servicing section entirely (client no longer offers servicing) and broadened messaging to multi-marque used cars.
+  - Delivered clean ZIP: `/app/frontend/public/broadfield-motor-company.zip` (index.html + assets), ingestable via the CMS "new site from design" upload.
+  - Answered client Qs: (1) CMS auto-optimizes uploads to WebP q82 + resize (fast loads); (2) vehicle image blocks are clonable so 10+ images per vehicle supported.
+
