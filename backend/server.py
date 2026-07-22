@@ -1802,7 +1802,9 @@ def _extract_design_zip(zip_bytes, dest):
         name = info.filename
         if info.is_dir(): continue
         parts = name.replace("\\", "/").split("/")
-        if any(p in ("__MACOSX",) or p.startswith(".") for p in parts): continue
+        _junk = {"__MACOSX", ".DS_Store", ".git", ".gitignore", ".idea", ".vscode", "Thumbs.db"}
+        # skip Mac/editor cruft but KEEP legitimate web dotfiles like .htaccess / .well-known
+        if any(p in _junk or p.startswith("._") for p in parts): continue
         target = os.path.abspath(os.path.join(dest, name))
         if not (target == dest_abs or target.startswith(dest_abs + os.sep)):
             raise HTTPException(400, "The zip contains an unsafe file path. Please re-export it.")

@@ -825,3 +825,10 @@ Both verified via curl + UI screenshots.
   - Cards use data-block="veh" (not "car") to avoid the auto finance "£0/mo" pill on blank placeholders.
   - Cache-buster ?v=5. Deliverable ZIP: 8 files, 3 pages.
   - NOTE: /tmp is wiped between turns — source of truth for site files is /app/frontend/public/broadfield-preview/ + the delivered zip.
+
+## Changelog — 2026-06 (fork, cont. 3) — .htaccess / go-live fix
+- **ROOT-CAUSE BUG FIXED:** `_extract_design_zip` (server.py ~1805) skipped ANY path part starting with "." — silently deleting `.htaccess` (and .well-known) on every "create from design" import. That's why client sites "wouldn't go live right" (no HTTPS/canonical/clean-URLs/caching config). Changed to skip only cruft (__MACOSX, .DS_Store, .git*, .idea, .vscode, Thumbs.db, ._*) and KEEP legitimate web dotfiles.
+- build_dist (copytree) and _sftp_push (os.walk) already handle dotfiles — extractor was the only gap. VERIFIED: re-ingested Broadfield ZIP → .htaccess (2172B) + 404.html now present in dist root and would be SFTP-pushed.
+- Broadfield ZIP now ships a proper `.htaccess` (Options -Indexes, DirectoryIndex, force HTTPS, strip www, /index.html→/, extensionless URL rewrite, gzip, browser caching, ErrorDocument 404) + branded `404.html`. Also fixed email to sales@broadfieldalfaromeo.com everywhere; Enquire/Register buttons + homepage form now compose emails (mailto). Cache-buster ?v=6. ZIP = 10 files.
+- ⚠️ ACTION: the extractor fix is BACKEND code — user must redeploy their TrueNAS/Dockge backend for it to take effect on their instance. Until then, .htaccess would still be stripped on their import (workaround: upload .htaccess once via Hostinger File Manager with hidden files shown).
+
