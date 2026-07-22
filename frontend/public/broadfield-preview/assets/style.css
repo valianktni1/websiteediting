@@ -166,6 +166,45 @@ em{font-style:italic}
 .reveal{opacity:0;transform:translateY(30px);transition:opacity .8s ease,transform .8s ease}
 .reveal.in{opacity:1;transform:none}
 
+/* SERVICES TILES */
+.svc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:44px}
+.svc-tile{position:relative;display:flex;flex-direction:column;min-height:230px;padding:26px;background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden;transition:transform .3s ease,border-color .3s ease,background-color .3s ease}
+.svc-tile::before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,rgba(200,40,41,.20),transparent 62%);opacity:0;transition:opacity .3s ease}
+.svc-tile:hover{transform:translateY(-6px);border-color:var(--red);background:var(--surface-2)}
+.svc-tile:hover::before{opacity:1}
+.svc-ico{position:relative;z-index:1;width:48px;height:48px;display:grid;place-items:center;color:var(--red);margin-bottom:auto}
+.svc-ico svg{width:30px;height:30px}
+.svc-tile h3{position:relative;z-index:1;font-family:var(--oswald);font-weight:600;text-transform:uppercase;letter-spacing:.02em;font-size:1.18rem;margin-top:22px}
+.svc-tile p{position:relative;z-index:1;color:var(--sec);font-size:.9rem;margin-top:5px}
+.svc-arr{position:relative;z-index:1;font-family:var(--oswald);text-transform:uppercase;letter-spacing:.1em;font-size:.72rem;color:var(--red);margin-top:16px;display:inline-flex;align-items:center;gap:7px}
+.svc-arr i{font-style:normal;transition:transform .25s ease}
+.svc-tile:hover .svc-arr i{transform:translateX(5px)}
+
+/* PAGE HERO (inner pages) */
+.phero{position:relative;min-height:54vh;display:flex;align-items:flex-end;overflow:hidden;padding-top:74px}
+.phero-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.42)}
+.phero::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(5,5,5,.96),rgba(5,5,5,.2) 70%);z-index:1}
+.phero-inner{position:relative;z-index:2;width:100%;padding-bottom:clamp(32px,5vw,60px)}
+.phero-title{font-family:var(--oswald);font-weight:700;text-transform:uppercase;line-height:.9;letter-spacing:-.02em;font-size:clamp(2.6rem,7vw,5.2rem);margin-top:6px}
+.phero-title em{font-family:var(--serif);font-weight:500;font-style:italic;text-transform:none;color:var(--red)}
+.phero-sub{color:#d6d8dc;max-width:56ch;margin-top:16px;font-size:1.05rem}
+
+/* INVENTORY GRID */
+.veh-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:14px}
+.veh{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;transition:transform .3s ease,border-color .3s ease}
+.veh:hover{transform:translateY(-6px);border-color:var(--red)}
+.veh-media{position:relative;aspect-ratio:4/3;overflow:hidden}
+.veh-media img{width:100%;height:100%;object-fit:cover;transition:transform .6s ease}
+.veh:hover .veh-media img{transform:scale(1.05)}
+.veh-body{padding:20px;display:flex;flex-direction:column;gap:10px;flex:1}
+.veh-meta{display:flex;justify-content:space-between;align-items:center;font-family:var(--oswald);text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;color:var(--sec)}
+.veh-price{color:#fff;font-size:1.05rem;font-weight:600;letter-spacing:.02em}
+.veh-body h3{font-family:var(--oswald);font-weight:600;text-transform:uppercase;font-size:1.15rem;line-height:1.05}
+.veh-strap{color:var(--sec);font-size:.9rem;flex:1}
+.veh .btn{margin-top:6px;align-self:flex-start}
+.inv-foot{margin-top:48px;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;padding:30px clamp(22px,4vw,40px);background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.inv-foot p{color:var(--sec);max-width:52ch}
+
 /* responsive */
 @media(max-width:960px){
   .nav-links,.nav-cta{display:none}
@@ -173,6 +212,8 @@ em{font-style:italic}
   .nav-mobile.open{display:flex}
   .hero{min-height:88vh}
   .hero-badge{height:72px}
+  .svc-grid{grid-template-columns:1fr 1fr}
+  .veh-grid{grid-template-columns:1fr 1fr}
   .sec-head{grid-template-columns:1fr;gap:22px}
   .bike-grid{grid-template-columns:1fr 1fr}
   .bike,.bike-hero,.bike-wide{grid-column:span 2;grid-row:auto}
@@ -185,8 +226,7 @@ em{font-style:italic}
   .trust-item{border-bottom:1px solid rgba(255,255,255,.18)}
 }
 @media(max-width:520px){
-  .bike-grid{grid-template-columns:1fr}
-  .bike,.bike-hero,.bike-wide{grid-column:span 1}
+  .svc-grid,.veh-grid{grid-template-columns:1fr}
   .form-row{grid-template-columns:1fr}
   .trust-grid{grid-template-columns:1fr}
 }

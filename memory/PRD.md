@@ -804,3 +804,13 @@ Both verified via curl + UI screenshots.
   - Delivered clean ZIP: `/app/frontend/public/broadfield-motor-company.zip` (index.html + assets), ingestable via the CMS "new site from design" upload.
   - Answered client Qs: (1) CMS auto-optimizes uploads to WebP q82 + resize (fast loads); (2) vehicle image blocks are clonable so 10+ images per vehicle supported.
 
+
+
+## Changelog — 2026-06 (fork, cont.)
+- **Broadfield: bikes re-added + 2 new inventory pages (DONE, verified via CMS render):**
+  - Homepage: added a modern on-brand "Explore Broadfield" services-tile grid (Used Alfa Romeo / Other Used Cars / Used Bikes / Contact Us — Servicing dropped per client). Tiles + nav + hero CTAs now link to the new pages. Copy reworded to include used motorbikes again.
+  - New page `used-cars.html`: Broadfield-styled page hero + responsive vehicle-card grid (data-block="car", price/status badges, clonable, multi-image ready). Fully editable.
+  - New page `used-bikes.html`: same template converted to bikes.
+  - Nav (Home · Used Cars · Used Bikes · Visit) consistent across all 3 pages; internal links relative .html and publish correctly.
+  - Verified by ingesting the ZIP into the preview CMS (3 pages) and screenshotting rendered index/used-cars/used-bikes — all correct incl. Reserved/Sold badges.
+  - Cache-buster bumped to `?v=3`. Deliverable: /app/frontend/public/broadfield-motor-company.zip (7 files, 3 pages).
