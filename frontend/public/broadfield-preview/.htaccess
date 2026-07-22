@@ -1,4 +1,4 @@
-# Broadfield Motor Company — canonical host, HTTPS, clean URLs, performance & caching
+# Broadfield Motor Company — canonical host, HTTPS, CLEAN URLs, performance & caching
 Options -Indexes
 DirectoryIndex index.html
 
@@ -13,15 +13,19 @@ DirectoryIndex index.html
   RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
   RewriteRule ^ https://%1%{REQUEST_URI} [L,R=301]
 
-  # Redirect /index.html to /
+  # 1) Redirect a directly-typed /index.html to the clean root  (once)
   RewriteCond %{THE_REQUEST} \s/index\.html[\s?] [NC]
-  RewriteRule ^index\.html$ / [L,R=301]
+  RewriteRule ^index\.html$ / [R=301,L]
 
-  # Extensionless URLs -> real .html file (so /used-cars serves used-cars.html)
+  # 2) Redirect any directly-typed /page.html to the clean /page  (once)
+  RewriteCond %{THE_REQUEST} \s/([^\s?]+)\.html[\s?] [NC]
+  RewriteRule ^ /%1 [R=301,L]
+
+  # 3) Internally serve the real .html file for a clean URL  (no redirect, no loop)
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteCond %{DOCUMENT_ROOT}/$1.html -f
-  RewriteRule ^(.+?)/?$ /$1.html [L,R=301]
+  RewriteRule ^(.+?)/?$ /$1.html [L]
 </IfModule>
 
 ErrorDocument 404 /404.html

@@ -832,3 +832,9 @@ Both verified via curl + UI screenshots.
 - Broadfield ZIP now ships a proper `.htaccess` (Options -Indexes, DirectoryIndex, force HTTPS, strip www, /index.html→/, extensionless URL rewrite, gzip, browser caching, ErrorDocument 404) + branded `404.html`. Also fixed email to sales@broadfieldalfaromeo.com everywhere; Enquire/Register buttons + homepage form now compose emails (mailto). Cache-buster ?v=6. ZIP = 10 files.
 - ⚠️ ACTION: the extractor fix is BACKEND code — user must redeploy their TrueNAS/Dockge backend for it to take effect on their instance. Until then, .htaccess would still be stripped on their import (workaround: upload .htaccess once via Hostinger File Manager with hidden files shown).
 
+
+## Changelog — 2026-06 (fork, cont. 4) — Stage 1: CLEAN URLs (Broadfield, verified on Apache)
+- Reversed .htaccess to correct clean-URL pattern: internal rewrite /page -> page.html (no redirect); 301 /page.html -> /page and /index.html -> /. Loop-safe (tested on real apache2 in-pod: /used-cars.html -> 1x301 -> /used-cars 200).
+- All internal links -> extensionless (/, /used-cars, /used-bikes, /#visit); canonical tags = clean URLs; added sitemap.xml + robots.txt (clean URLs). Files stay static .html (no PHP). Cache-bust ?v=7. ZIP = 12 files.
+- Scope: Broadfield site files ONLY. Platform-wide clean-URL publishing (opt-in per site) is the deferred next sub-step; server.py untouched to avoid affecting wifetobe et al.
+- apache2 installed in pod for the test (not part of app runtime).
