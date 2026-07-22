@@ -814,3 +814,14 @@ Both verified via curl + UI screenshots.
   - Nav (Home · Used Cars · Used Bikes · Visit) consistent across all 3 pages; internal links relative .html and publish correctly.
   - Verified by ingesting the ZIP into the preview CMS (3 pages) and screenshotting rendered index/used-cars/used-bikes — all correct incl. Reserved/Sold badges.
   - Cache-buster bumped to `?v=3`. Deliverable: /app/frontend/public/broadfield-motor-company.zip (7 files, 3 pages).
+
+
+## Changelog — 2026-06 (fork, cont. 2)
+- **Broadfield used-cars/used-bikes → blank Coming Soon placeholders + multi-image slider (DONE, verified via CMS op):**
+  - Downloaded client's Coming Soon image to assets/comingsoon.webp.
+  - Rebuilt all vehicle cards as blank placeholders (Make & Model / £0000 / Description / spec grid all "—" / Enquire + Call us) matching the Ribble Valley car-sales reference.
+  - Replaced single img with a real photo slider: .veh-slider > .veh-gallery > .veh-slide (scroll-snap) + hover prev/next + photo counter; slider JS added to assets/app.js (initVehSliders).
+  - Editor add-image op duplicates a .veh-slide → clients add up to 10 photos, visitors slide through. VERIFIED: ingested ZIP, called op add-image on a slide eid → gallery went 1→2 slides, counter rendered "1 / 2".
+  - Cards use data-block="veh" (not "car") to avoid the auto finance "£0/mo" pill on blank placeholders.
+  - Cache-buster ?v=5. Deliverable ZIP: 8 files, 3 pages.
+  - NOTE: /tmp is wiped between turns — source of truth for site files is /app/frontend/public/broadfield-preview/ + the delivered zip.
