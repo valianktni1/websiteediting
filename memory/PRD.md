@@ -838,3 +838,12 @@ Both verified via curl + UI screenshots.
 - All internal links -> extensionless (/, /used-cars, /used-bikes, /#visit); canonical tags = clean URLs; added sitemap.xml + robots.txt (clean URLs). Files stay static .html (no PHP). Cache-bust ?v=7. ZIP = 12 files.
 - Scope: Broadfield site files ONLY. Platform-wide clean-URL publishing (opt-in per site) is the deferred next sub-step; server.py untouched to avoid affecting wifetobe et al.
 - apache2 installed in pod for the test (not part of app runtime).
+
+## Changelog — 2026-06 (fork, cont. 5) — Clean URLs in the CMS (opt-in, platform)
+- Added per-site **clean_urls** flag (default FALSE). When OFF, build_dist is byte-for-byte unchanged (verified). When ON, publish post-processes the dist: rewrites internal .html links -> clean, strips/【adds】 canonical tags, generates sitemap.xml + robots.txt, and writes a managed .htaccess block (301 *.html -> clean + internal rewrite). Fully reversible (toggle OFF -> next build reverts).
+- New endpoint: PUT /api/sites/{slug}/clean-urls {enabled}. clean_urls exposed in GET /api/sites and /publish-target.
+- build_dist(site_slug,pages,src_dir,site=None); both call sites (preview + publish) pass site=s.
+- Frontend: checkbox in Admin Settings -> Hostinger SFTP tab (data-testid sftp-clean-urls) calling the endpoint; loads current state from /publish-target. Compiled OK, present in bundle.
+- Helpers: _page_relpath, _clean_path, _write_clean_htaccess (marker-wrapped, idempotent), _apply_clean_urls.
+- TESTED via API on a throwaway .html-linked site: OFF=unchanged; ON=links/canonical/sitemap/robots/.htaccess correct; OFF again=reverted. .htaccess ruleset previously proven loop-safe on real Apache.
+- ⚠️ Backend code change -> user must REDEPLOY TrueNAS/Dockge backend for the toggle to appear. Existing sites unaffected until toggled ON per site. Do NOT enable on a site whose source .htaccess already has manual clean-url rules (would duplicate).

@@ -683,6 +683,7 @@ function SftpTab({ flash }) {
   const [slug, setSlug] = useState("");
   const [f, setF] = useState({ host: "", port: 22, username: "", password: "", remote_path: "public_html", domain: "" });
   const [hasPw, setHasPw] = useState(false);
+  const [clean, setClean] = useState(false);
   useEffect(() => { axios.get(`${API}/sites`).then(r => { setSites(r.data); if (r.data[0]) setSlug(r.data[0].slug); }); }, []);
   useEffect(() => {
     if (!slug) return;
@@ -690,7 +691,15 @@ function SftpTab({ flash }) {
       setF({ host: r.data.host, port: r.data.port, username: r.data.username, password: "", remote_path: r.data.remote_path, domain: r.data.domain || "" });
       setHasPw(r.data.has_password);
     });
+    axios.get(`${API}/sites/${slug}/publish-target`).then(r => setClean(!!r.data.clean_urls)).catch(() => {});
   }, [slug]);
+  const toggleClean = async (v) => {
+    setClean(v);
+    try {
+      await axios.put(`${API}/sites/${slug}/clean-urls`, { enabled: v });
+      flash(v ? "Clean URLs turned ON for this site — Publish to apply" : "Clean URLs turned OFF — Publish to apply");
+    } catch (e) { setClean(!v); flash("Could not change Clean URLs setting"); }
+  };
   const save = async () => {
     await axios.put(`${API}/sites/${slug}/sftp`, f);
     flash("SFTP settings saved"); setHasPw(!!f.password || hasPw);
@@ -711,6 +720,12 @@ function SftpTab({ flash }) {
       <label>Locked domain 🔒</label>
       <input data-testid="sftp-domain" value={f.domain} placeholder="wifetobe.org" onChange={e => setF({ ...f, domain: e.target.value.trim().toLowerCase() })} />
       <div className="hint" style={{marginTop:6}}>Safety lock: the app will <b>refuse to publish</b> unless the remote path below contains this domain — so this site can never overwrite another.</div>
+      <label style={{marginTop:16}}>Clean URLs</label>
+      <label style={{display:"flex",alignItems:"center",gap:10,fontWeight:400,cursor:"pointer"}}>
+        <input type="checkbox" data-testid="sftp-clean-urls" checked={clean} disabled={!slug} onChange={e => toggleClean(e.target.checked)} style={{width:18,height:18}} />
+        <span>Publish this site with clean, extensionless URLs (e.g. <code>/about</code> instead of <code>/about.html</code>)</span>
+      </label>
+      <div className="hint" style={{marginTop:6}}>When on, publishing rewrites menu links, adds canonical tags, a <code>sitemap.xml</code>, and the correct <code>.htaccess</code> so old <code>.html</code> links 301-redirect to the clean version. Off by default — other sites are unaffected. Set the <b>Locked domain</b> above so canonical/sitemap URLs are correct. <b>Publish</b> to apply.</div>
       <label>Host</label>
       <input data-testid="sftp-host" value={f.host} placeholder="ftp.yourdomain.com" onChange={e => setF({ ...f, host: e.target.value })} />
       <label>Port</label>

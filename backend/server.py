@@ -978,7 +978,7 @@ async def create_user(body: NewUser, u=Depends(require_admin)):
 async def sites(u=Depends(current_user)):
     out=[]
     async for s in db.sites.find({}):
-        out.append({"slug":s["slug"],"name":s.get("name"),"order":s.get("order",[])})
+        out.append({"slug":s["slug"],"name":s.get("name"),"order":s.get("order",[]),"clean_urls":bool(s.get("clean_urls",False))})
     return out
 
 @api.post("/sites/{slug}/ingest")
@@ -1506,7 +1506,87 @@ def optimize_image(raw: bytes, filename: str):
 
 
 # ---------------- publish ----------------
-def build_dist(site_slug, pages, src_dir):
+def _page_relpath(p):
+    return (p.get("relpath") or ("index.html" if p["slug"]=="home" else f"{p['slug']}.html")).replace("\\","/").lstrip("/")
+
+def _clean_path(rel):
+    """Map a page's on-disk relpath to its clean public URL path."""
+    rel = rel.replace("\\","/").lstrip("/")
+    if rel == "index.html": return "/"
+    if rel.endswith("/index.html"): return "/" + rel[:-len("index.html")]  # dir/
+    if rel.endswith(".html"): return "/" + rel[:-5]
+    return "/" + rel
+
+_CLEAN_HTACCESS_BEGIN = "# BEGIN CMS clean-urls (managed - do not edit)"
+_CLEAN_HTACCESS_END = "# END CMS clean-urls"
+
+def _write_clean_htaccess(out):
+    block = _CLEAN_HTACCESS_BEGIN + "\n" + r"""DirectoryIndex index.html
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Redirect a directly-typed /index.html to the clean root
+  RewriteCond %{THE_REQUEST} \s/index\.html[\s?] [NC]
+  RewriteRule ^index\.html$ / [R=301,L]
+  # Redirect any directly-typed /page.html to the clean /page
+  RewriteCond %{THE_REQUEST} \s/([^\s?]+)\.html[\s?] [NC]
+  RewriteRule ^ /%1 [R=301,L]
+  # Internally serve the real .html file for a clean URL (no redirect, no loop)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{DOCUMENT_ROOT}/$1.html -f
+  RewriteRule ^(.+?)/?$ /$1.html [L]
+</IfModule>
+""" + _CLEAN_HTACCESS_END + "\n"
+    path = os.path.join(out, ".htaccess")
+    existing = open(path, encoding="utf-8").read() if os.path.exists(path) else ""
+    if _CLEAN_HTACCESS_BEGIN in existing and _CLEAN_HTACCESS_END in existing:
+        pre = existing.split(_CLEAN_HTACCESS_BEGIN)[0]
+        post = existing.split(_CLEAN_HTACCESS_END, 1)[1]
+        existing = (pre + post)
+    existing = existing.strip("\n")
+    open(path, "w", encoding="utf-8").write(block + (("\n" + existing + "\n") if existing else ""))
+
+def _apply_clean_urls(out, pages, domain):
+    """Post-process a built dist so it uses clean (extensionless) URLs. Opt-in only."""
+    import re
+    rels = {_page_relpath(p): _clean_path(_page_relpath(p)) for p in pages}
+    href_re = re.compile(r'href="(?:\./)?([A-Za-z0-9_\-./]+?)\.html(#[^"]*)?"')
+    def _rewrite(m):
+        g1, frag = m.group(1), (m.group(2) or "")
+        cp = rels.get(g1 + ".html")
+        if cp is None:
+            return m.group(0)              # unknown/external page -> leave untouched
+        if cp == "/":
+            return f'href="/{frag}"' if frag else 'href="/"'
+        return f'href="{cp}{frag}"'
+    canon_re = re.compile(r'[ \t]*<link[^>]+rel="canonical"[^>]*>\s*', re.I)
+    for root, _, files in os.walk(out):
+        for fn in files:
+            if not fn.endswith(".html"): continue
+            fp = os.path.join(root, fn)
+            html = open(fp, encoding="utf-8").read()
+            html = href_re.sub(_rewrite, html)
+            html = canon_re.sub("", html)
+            if domain:
+                rel = os.path.relpath(fp, out).replace("\\","/")
+                canon = f'{domain.rstrip("/")}{_clean_path(rel)}'
+                if "</head>" in html:
+                    html = html.replace("</head>", f'<link rel="canonical" href="{canon}">\n</head>', 1)
+            open(fp, "w", encoding="utf-8").write(html)
+    if domain:
+        d = domain.rstrip("/")
+        urls = sorted({_clean_path(_page_relpath(p)) for p in pages})
+        items = "\n".join(f'  <url><loc>{d}{u}</loc></url>' for u in urls)
+        sm = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+              '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+              f'{items}\n</urlset>\n')
+        open(os.path.join(out, "sitemap.xml"), "w", encoding="utf-8").write(sm)
+        rp = os.path.join(out, "robots.txt")
+        if not os.path.exists(rp):
+            open(rp, "w", encoding="utf-8").write(f"User-agent: *\nAllow: /\n\nSitemap: {d}/sitemap.xml\n")
+    _write_clean_htaccess(out)
+
+def build_dist(site_slug, pages, src_dir, site=None):
     out = os.path.join(DIST_DIR, site_slug)
     if os.path.exists(out): shutil.rmtree(out)
     os.makedirs(out, exist_ok=True)
@@ -1522,10 +1602,15 @@ def build_dist(site_slug, pages, src_dir):
     # render pages back to their own relative path (subfolders preserved)
     for p in pages:
         html = render_page(p, for_editor=False, asset_base="")
-        rel = (p.get("relpath") or ("index.html" if p["slug"]=="home" else f"{p['slug']}.html")).replace("\\","/")
+        rel = _page_relpath(p)
         dest = os.path.join(out, rel)
         os.makedirs(os.path.dirname(dest) or out, exist_ok=True)
         open(dest,"w",encoding="utf-8").write(html)
+    # OPT-IN clean URLs (default off -> behaves exactly as before)
+    if site and site.get("clean_urls"):
+        dom = (site.get("domain") or "").strip()
+        if dom and not dom.startswith("http"): dom = "https://" + dom
+        _apply_clean_urls(out, pages, dom)
     return out
 
 @api.post("/sites/{slug}/preview")
@@ -1533,7 +1618,7 @@ async def preview(slug: str, u=Depends(current_user)):
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
     pages=[x async for x in db.pages.find({"site":slug})]
-    out = build_dist(slug, pages, s["source_dir"])
+    out = build_dist(slug, pages, s["source_dir"], site=s)
     return {"dist":out,"pages":len(pages),"preview_url":f"/api/dist/{slug}/index.html"}
 
 class ReplaceBody(BaseModel):
@@ -1668,7 +1753,8 @@ async def publish_target(slug: str, u=Depends(current_user)):
     remote = sftp.get("remote_path","") or ""
     path_ok = (not domain) or (domain in remote.lower())
     return {"configured":configured,"host":sftp.get("host",""),
-            "remote_path":remote,"pages":pages,"domain":domain,"path_ok":path_ok}
+            "remote_path":remote,"pages":pages,"domain":domain,"path_ok":path_ok,
+            "clean_urls":bool(s.get("clean_urls",False))}
 
 def _domain_guard(site, remote_path):
     """Raise if a site with a locked domain would publish to a path that doesn't contain it."""
@@ -1877,7 +1963,7 @@ async def publish(slug: str, u=Depends(current_user)):
     if not s: raise HTTPException(404,"Site not found")
     await create_snapshot(slug, "pre-publish", "Before publishing")
     pages=[x async for x in db.pages.find({"site":slug})]
-    out = build_dist(slug, pages, s["source_dir"])
+    out = build_dist(slug, pages, s["source_dir"], site=s)
     # backup current dist as zip
     ts=datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     bkp=os.path.join(BACKUP_DIR, f"{slug}-{ts}.zip")
@@ -1953,6 +2039,16 @@ async def update_site_meta(slug: str, body: SiteMeta, u=Depends(require_admin)):
     if body.domain is not None: upd["domain"] = (body.domain or "").strip().lower()
     if upd: await db.sites.update_one({"slug":slug},{"$set":upd})
     return {"ok":True, **upd}
+
+class CleanUrlsBody(BaseModel):
+    enabled: bool
+
+@api.put("/sites/{slug}/clean-urls")
+async def set_clean_urls(slug: str, body: CleanUrlsBody, u=Depends(require_admin)):
+    s = await db.sites.find_one({"slug":slug})
+    if not s: raise HTTPException(404,"Site not found")
+    await db.sites.update_one({"slug":slug},{"$set":{"clean_urls":bool(body.enabled)}})
+    return {"ok":True,"clean_urls":bool(body.enabled)}
 
 def _nav_items(container):
     """Direct children of a nav container that are (or contain) a link — handles both
