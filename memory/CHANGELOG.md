@@ -82,3 +82,23 @@ Verified with curl (3 angles):
   editor-page) returns 403.
 - Owner dashboard UI smoke-tested: loads normally, nothing broken.
 Test editor creds are in test_credentials.md.
+
+### CRITICAL editor bug fix — stable element IDs (DONE, verified)
+Symptom (reported on Mark's used-cars page): after adding a feature / duplicating a car,
+the "Enquire about this car" button text got overwritten with "New feature", and a stray
+"New feature" appeared near the CTA.
+Root cause: `assign_regions` in `server.py` DELETED and re-numbered every element's
+`data-eid` sequentially on EVERY structural edit. Because ids shifted by position, a text
+save meant for a new feature chip could land on the neighbouring Enquire button (classic
+positional-id race with blur-save + reload).
+Fix: `assign_regions` now assigns **stable ids** — existing `data-eid`s are preserved,
+only new or duplicate-cloned elements get a fresh id (via a used-number set + duplicate
+detection in document order), and stale ids on no-longer-editable elements are stripped.
+Backward compatible (fresh ingest still yields t0,t1,…; existing pages keep their ids).
+Verified via API: adding a feature keeps the Enquire button's id (t26) and text intact;
+duplicating a card produces ZERO duplicate ids; clone gets fresh ids.
+NOTE: this prevents FUTURE corruption. A page already damaged before the fix must be
+repaired manually (retype the button text, delete the stray chip) or rolled back via a
+Restore point.
+Gold outlines around cards = normal editor hover/selection highlight on `[data-eid]`
+elements only; never shows on the live site. Not a bug.

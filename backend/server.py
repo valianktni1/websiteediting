@@ -249,12 +249,29 @@ def _is_card_link(el):
         isinstance(c, Tag) and c.name not in INLINE_FMT for c in el.children)
 
 def assign_regions(body):
-    """Clear + reassign data-eid across the body and return a fresh regions dict.
-    Shared by ingest and structural edits so eids/regions stay consistent."""
+    """Assign STABLE data-eids and return the regions dict.
+
+    Existing ids are PRESERVED so a text save can never land on the wrong element
+    after a structural edit (add/duplicate/delete/move). Only elements that are
+    new, or duplicates created by cloning a card, are given a fresh id. This is
+    shared by ingest (fresh body -> t0,t1,...) and every structural edit."""
+    used = set()
     for el in body.find_all(attrs={"data-eid": True}):
-        del el["data-eid"]
+        m = re.match(r'^[tia](\d+)$', el.get("data-eid") or "")
+        if m: used.add(int(m.group(1)))
+    counter = [max(used) + 1 if used else 0]
+    seen = set()
+    def eid_for(el, prefix):
+        e = el.get("data-eid")
+        if not e or e in seen:            # missing OR a duplicate clone -> fresh id
+            while counter[0] in used: counter[0] += 1
+            e = f"{prefix}{counter[0]}"; used.add(counter[0]); counter[0] += 1
+            el["data-eid"] = e
+        seen.add(e)
+        return e
+
     regions = {}
-    n = 0
+    keep = set()
     for el in body.find_all(list(EDIT_TAGS)):
         if el.find(list(EDIT_TAGS)):
             continue
@@ -264,8 +281,7 @@ def assign_regions(body):
         # inner text spans are made editable separately — don't lock their text into one region
         if _is_card_link(el):
             continue
-        eid = f"t{n}"; n += 1
-        el["data-eid"] = eid
+        eid = eid_for(el, "t"); keep.add(id(el))
         reg = {"type": "text", "value": el.decode_contents()}
         if el.name in ("a", "button") and el.has_attr("href"):
             reg["href"] = el.get("href", "")
@@ -275,7 +291,7 @@ def assign_regions(body):
     # name inside a logo link) — make them editable too, but NOT when inside a block-level text
     # region (so prose paragraphs with inline <b>/<strong> keep editing as one region).
     for el in body.find_all(["span", "b", "strong"]):
-        if el.has_attr("data-eid"):
+        if id(el) in keep:
             continue
         if el.find(list(EDIT_TAGS) + ["span", "b", "strong"]):
             continue
@@ -284,20 +300,21 @@ def assign_regions(body):
         parent_edit = el.find_parent(list(EDIT_TAGS))
         if parent_edit is not None and not _is_card_link(parent_edit):
             continue
-        eid = f"t{n}"; n += 1
-        el["data-eid"] = eid
+        eid = eid_for(el, "t"); keep.add(id(el))
         regions[eid] = {"type": "text", "value": el.decode_contents()}
     for img in body.find_all("img"):
-        eid = f"i{n}"; n += 1
-        img["data-eid"] = eid
+        eid = eid_for(img, "i"); keep.add(id(img))
         regions[eid] = {"type": "image", "value": img.get("src", ""), "alt": img.get("alt", "")}
     # card / image links: <a href> that wrap other elements (not leaf text links) — make editable
     for a in body.find_all("a"):
-        if a.has_attr("data-eid") or not a.has_attr("href"):
+        if id(a) in keep or not a.has_attr("href"):
             continue
-        eid = f"a{n}"; n += 1
-        a["data-eid"] = eid
+        eid = eid_for(a, "a"); keep.add(id(a))
         regions[eid] = {"type": "link", "href": a.get("href", "")}
+    # strip any stale id left on an element that is no longer an editable region
+    for el in body.find_all(attrs={"data-eid": True}):
+        if id(el) not in keep:
+            del el["data-eid"]
     return regions
 
 def _tag_repeating_blocks(soup):
