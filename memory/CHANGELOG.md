@@ -62,3 +62,23 @@ Files: `server.py` (editor JS + add-el op), `templates_seed.py` (blank cars + im
 - Toolbar: **"+ Add another car"** button added to the Card group, shown only on car cards
   (same detection as the Status button). Verified: 2 cars → 3, new card is a proper blank
   Coming-Soon car. Lets clients build a stock list without duplicating an existing card.
+
+### Multi-tenant access-control hardening (DONE — verified via API)
+Closed read/write gaps so a client (editor) is fully isolated to their own site at the
+SERVER level, not just hidden in the UI. Changes in `server.py`:
+- `scope_ok` tightened: only admin/superadmin get all-site access; an editor MUST have a
+  matching `site_id` (an editor with no site assigned is now denied, not granted-all).
+- `GET /sites` now filters to the editor's own site (returns [] if unassigned).
+- Added `scope_ok` guards to previously-open endpoints: `site_pages`, `reorder_pages`,
+  `get_page`, `fill_alt_status`, `editor_page`, `upload_media`, `preview`, `find_replace`,
+  `publish_target`, `publish`, `list_backups`, `publish_changes`.
+- All sensitive config (SFTP get/set/test, branding, site-meta, clean-urls, remove-site,
+  live-restore) was already `require_admin`/`require_super` — left unchanged.
+Verified with curl (3 angles):
+- Owner/superadmin → sees all 5 sites, full access (200).
+- Scoped editor (site_id=demo-couk) → `/sites` returns ONLY demo-couk; own site fully works
+  (pages/publish-target/snapshots/backups/page/editor all 200).
+- Scoped editor → every wifetobe endpoint (pages/content/publish/reorder/publish-target/
+  editor-page) returns 403.
+- Owner dashboard UI smoke-tested: loads normally, nothing broken.
+Test editor creds are in test_credentials.md.

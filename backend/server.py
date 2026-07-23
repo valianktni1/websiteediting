@@ -983,8 +983,12 @@ async def create_user(body: NewUser, u=Depends(require_admin)):
 # ---------------- site/page routes ----------------
 @api.get("/sites")
 async def sites(u=Depends(current_user)):
+    q = {}
+    if u.get("role") not in ("admin","superadmin"):
+        if not u.get("site_id"): return []
+        q = {"slug": u["site_id"]}
     out=[]
-    async for s in db.sites.find({}):
+    async for s in db.sites.find(q):
         out.append({"slug":s["slug"],"name":s.get("name"),"order":s.get("order",[]),"clean_urls":bool(s.get("clean_urls",False))})
     return out
 
@@ -996,6 +1000,7 @@ async def do_ingest(slug: str, force: bool = False, u=Depends(require_admin)):
 
 @api.get("/sites/{slug}/pages")
 async def site_pages(slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
     return s.get("order",[])
@@ -1005,6 +1010,7 @@ class PagesOrder(BaseModel):
 
 @api.post("/sites/{slug}/pages/reorder")
 async def reorder_pages(slug: str, body: PagesOrder, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
     cur = s.get("order",[])
@@ -1021,6 +1027,7 @@ async def reorder_pages(slug: str, body: PagesOrder, u=Depends(current_user)):
 
 @api.get("/pages/{slug_site}/{slug}")
 async def get_page(slug_site: str, slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed for this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
     return {"site":slug_site,"slug":slug,"title":p["title"],"seo":p.get("seo",{}),
@@ -1145,6 +1152,7 @@ async def _run_fill_alt(job_id, site, slug, targets):
 
 @api.get("/pages/{slug_site}/{slug}/fill-alt-status/{job_id}")
 async def fill_alt_status(slug_site: str, slug: str, job_id: str, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed for this site")
     j = await db.alt_jobs.find_one({"_id":job_id})
     if not j: raise HTTPException(404,"Job not found")
     return {"state":j.get("state"),"done":j.get("done",0),"total":j.get("total",0),"filled":j.get("filled",0)}
@@ -1494,6 +1502,7 @@ async def remove_site(slug: str, u=Depends(require_super)):
 # editor iframe html
 @api.get("/editor/page/{slug_site}/{slug}", response_class=HTMLResponse)
 async def editor_page(slug_site: str, slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed for this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
     # base points at the page's OWN folder so its relative assets resolve (e.g. car-sales/assets/..)
@@ -1526,6 +1535,7 @@ async def download_zip(name: str):
 
 @api.post("/media/{slug_site}/upload")
 async def upload_media(slug_site: str, file: UploadFile = File(...), u=Depends(current_user)):
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed for this site")
     d = os.path.join(MEDIA_DIR, slug_site); os.makedirs(d, exist_ok=True)
     raw = await file.read()
     data, ext = optimize_image(raw, file.filename or "upload")
@@ -1709,6 +1719,7 @@ def build_dist(site_slug, pages, src_dir, site=None):
 
 @api.post("/sites/{slug}/preview")
 async def preview(slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
     pages=[x async for x in db.pages.find({"site":slug})]
@@ -1734,6 +1745,7 @@ def _count_and_replace(text, find, repl, match_case, do):
 
 @api.post("/sites/{slug}/replace")
 async def find_replace(slug: str, body: ReplaceBody, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
     find = body.find
@@ -1838,6 +1850,7 @@ def _do_test(conf):
 
 @api.get("/sites/{slug}/publish-target")
 async def publish_target(slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
     sftp = s.get("sftp") or {}
@@ -2053,6 +2066,7 @@ async def create_from_design(
 
 @api.post("/sites/{slug}/publish")
 async def publish(slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
     await create_snapshot(slug, "pre-publish", "Before publishing")
@@ -2200,7 +2214,8 @@ async def reorder_nav(slug: str, body: NavOrder, u=Depends(require_admin)):
     return {"ok": True, "pages_updated": updated}
 
 def scope_ok(u, site):
-    return u.get("role")=="admin" or not u.get("site_id") or u["site_id"]==site
+    if u.get("role") in ("admin","superadmin"): return True
+    return bool(u.get("site_id")) and u.get("site_id") == site
 
 @api.post("/pages/{site}")
 async def create_page(site: str, body: NewPage, u=Depends(current_user)):
@@ -2351,6 +2366,7 @@ async def delete_page(site: str, slug: str, u=Depends(current_user)):
 
 @api.get("/sites/{slug}/backups")
 async def list_backups(slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
     out=[]
     for f in sorted(glob.glob(os.path.join(BACKUP_DIR,f"{slug}-*.zip")), reverse=True):
         st=os.stat(f)
@@ -2362,6 +2378,7 @@ async def list_backups(slug: str, u=Depends(current_user)):
 async def publish_changes(slug: str, u=Depends(current_user)):
     """Build the site now and compare it against the last published backup so the
     user sees exactly what will change BEFORE anything goes live."""
+    if not scope_ok(u, slug): raise HTTPException(403,"Not allowed for this site")
     import hashlib
     s = await db.sites.find_one({"slug":slug})
     if not s: raise HTTPException(404,"Site not found")
