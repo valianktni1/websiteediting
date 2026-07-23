@@ -138,6 +138,17 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .vbadge.b-manual{ background:rgba(138,154,123,.18); color:#bcd0ad; border:1px solid var(--sage); }
 .vbadge.b-pub{ background:rgba(90,120,160,.18); color:#a9c4e6; border:1px solid #3a4d66; }
 .vbadge.b-auto{ background:#232833; color:var(--muted); border:1px solid var(--line); }
+.vbadge.b-live{ background:rgba(31,157,85,.18); color:#5fd48f; border:1px solid #2f7d55; }
+.chg-summary{ background:#0f1216; border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; }
+.chg-line{ font-size:.82rem; line-height:1.7; color:var(--text,#e6e6e6); display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+.chg-line b{ font-weight:600; }
+.chg-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; flex:0 0 auto; }
+.chg-upd .chg-dot{ background:#e0a94a; }
+.chg-add .chg-dot{ background:#5fd48f; }
+.chg-del .chg-dot{ background:#ff8a8a; }
+.publish-done{ text-align:center; padding:8px 0 4px; }
+.pd-icon{ width:48px; height:48px; line-height:48px; border-radius:50%; margin:0 auto 8px; font-size:24px; background:rgba(31,157,85,.15); color:#5fd48f; border:1px solid #2f7d55; }
+
 .admin-meta, .version-meta{ font-size:.76rem; color:var(--muted); margin-top:2px; font-family:monospace; }
 .admin-form{ border-top:1px solid var(--line); padding-top:16px; }
 .admin-form h4{ font-size:.95rem; margin-bottom:6px; }

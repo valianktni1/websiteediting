@@ -973,18 +973,86 @@ function SitesTab({ flash, onSitesChanged }) {
   );
 }
 
-function PublishConfirm({ site, onClose, flash }) {
+function _pageLabel(f) {
+  if (f === "index.html") return "Home";
+  if (f.endsWith("/index.html")) return "/" + f.slice(0, -("index.html".length));
+  if (f.endsWith(".html")) return "/" + f.slice(0, -5);
+  return null;
+}
+function ChangeLine({ label, list, cls }) {
+  if (!list || !list.length) return null;
+  const pages = [], other = [];
+  list.forEach(f => { const l = _pageLabel(f); if (l) pages.push(l); else other.push(f); });
+  return (
+    <div className={`chg-line ${cls}`} data-testid={`chg-${cls}`}>
+      <span className="chg-dot" /> <b>{label}</b>{" "}
+      {pages.length ? <span>{pages.join(", ")}</span> : null}
+      {pages.length && other.length ? " · " : ""}
+      {other.length ? <span className="muted">{other.length} supporting file{other.length === 1 ? "" : "s"} (sitemap, styles, images)</span> : null}
+    </div>
+  );
+}
+
+function PublishConfirm({ site, isAdmin, onClose, flash, onPublished }) {
   const [t, setT] = useState(null);
+  const [chg, setChg] = useState(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { axios.get(`${API}/sites/${site}/publish-target`).then(r => setT(r.data)); }, [site]);
+  const [done, setDone] = useState(null);
+  const [undoing, setUndoing] = useState(false);
+
+  useEffect(() => {
+    axios.get(`${API}/sites/${site}/publish-target`).then(r => setT(r.data));
+    axios.get(`${API}/sites/${site}/publish-changes`).then(r => setChg(r.data)).catch(() => setChg({ error: true }));
+  }, [site]);
+
+  const total = chg && !chg.error ? (chg.changed?.length || 0) + (chg.added?.length || 0) + (chg.removed?.length || 0) : null;
+  const previewChanges = () => window.open(`${API}/dist/${site}/index.html`, "_blank");
+
   const go = async () => {
     setBusy(true); flash("Publishing…");
     try {
       const { data } = await axios.post(`${API}/sites/${site}/publish`);
+      setDone(data);
       flash(data.message || (data.published ? "Published!" : "Done"));
+      onPublished && onPublished();
     } catch (e) { flash("Publish failed"); }
-    finally { setBusy(false); onClose(); }
+    finally { setBusy(false); }
   };
+
+  const undo = async () => {
+    setUndoing(true); flash("Rolling the live site back…");
+    try {
+      const { data } = await axios.get(`${API}/sites/${site}/backups`);
+      if (!data || data.length < 2) { flash("No earlier version to roll back to yet."); setUndoing(false); return; }
+      const res = await axios.post(`${API}/sites/${site}/restore`, { name: data[1].name });
+      flash(res.data.message || "Live site rolled back.");
+      setDone(null);
+    } catch (e) { flash("Rollback failed — open Publish history to pick a version."); }
+    finally { setUndoing(false); }
+  };
+
+  if (done) {
+    return (
+      <Modal title="Publish complete" onClose={onClose}>
+        <div className="publish-done" data-testid="publish-done">
+          <div className="pd-icon">{done.published ? "✓" : "•"}</div>
+          <p className="hint" style={{ fontSize: 15 }}>{done.message || (done.published ? "Your site is now live." : "Done.")}</p>
+        </div>
+        {done.published && isAdmin && (
+          <>
+            <p className="hint" style={{ marginTop: 8 }}>Not happy with it? You can put the <b>previous live version</b> back in one click — visitors will see it again immediately.</p>
+            <button className="btn" data-testid="undo-publish-btn" disabled={undoing} onClick={undo} style={{ marginTop: 6 }}>
+              {undoing ? "Rolling back…" : "↩ Undo this publish (restore previous version)"}
+            </button>
+          </>
+        )}
+        <div className="modal-actions">
+          <button className="btn primary" data-testid="publish-close" onClick={onClose}>Done</button>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal title="Publish to Hostinger" onClose={onClose}>
       {!t && <div className="muted">Checking target…</div>}
@@ -999,22 +1067,83 @@ function PublishConfirm({ site, onClose, flash }) {
       )}
       {t && t.configured && (
         <>
-          <p className="hint">You're about to push <b>{t.pages} page(s)</b> live to:</p>
+          <div className="chg-summary" data-testid="change-summary">
+            {!chg && <div className="muted">Working out what's changed…</div>}
+            {chg && chg.error && <div className="muted">Ready to publish {t.pages} page(s).</div>}
+            {chg && !chg.error && !chg.has_baseline && (
+              <p className="hint"><b>First publish.</b> Your whole site ({chg.pages} page{chg.pages === 1 ? "" : "s"}) will go live.</p>
+            )}
+            {chg && !chg.error && chg.has_baseline && total === 0 && (
+              <p className="hint" data-testid="no-changes">✓ <b>No changes since your last publish</b> — everything's already live. You can still re-publish if you like.</p>
+            )}
+            {chg && !chg.error && chg.has_baseline && total > 0 && (
+              <>
+                <p className="hint" style={{ marginBottom: 8 }}><b>Here's what will change</b> when you publish:</p>
+                <ChangeLine label="Updated:" list={chg.changed} cls="chg-upd" />
+                <ChangeLine label="New:" list={chg.added} cls="chg-add" />
+                <ChangeLine label="Removed:" list={chg.removed} cls="chg-del" />
+              </>
+            )}
+          </div>
+          <button className="btn ghost" data-testid="preview-changes-btn" onClick={previewChanges} style={{ marginTop: 4, marginBottom: 12 }}>
+            👁 Preview exactly what will go live
+          </button>
+          <p className="hint">Pushing <b>{t.pages} page(s)</b> to:</p>
           <div className={`target-box ${t.path_ok ? "" : "blocked"}`} data-testid="publish-target-path">
             <div className="target-host">{t.host}{t.domain ? ` · 🔒 ${t.domain}` : ""}</div>
             <div className="target-path">{t.remote_path || "(account home)"}</div>
           </div>
           {t.path_ok ? (
-            <p className="hint" style={{marginTop:12}}>⚠️ Files with the same names in that folder will be <b>overwritten</b>. Confirm this is <b>{site}</b>'s own folder. If unsure, cancel and run <b>Test connection</b> first.</p>
+            <p className="hint" style={{ marginTop: 12 }}>A full backup is saved first, so this is always reversible. If unsure, cancel and run <b>Test connection</b> first.</p>
           ) : (
-            <p className="hint bad-hint" style={{marginTop:12}} data-testid="publish-blocked">🛑 <b>Blocked:</b> the remote path does not contain this site's locked domain <b>{t.domain}</b>. Publishing is disabled to protect your other sites. Fix the path in <b>Admin → Hostinger SFTP</b> to <code>.../domains/{t.domain}/public_html</code>.</p>
+            <p className="hint bad-hint" style={{ marginTop: 12 }} data-testid="publish-blocked">🛑 <b>Blocked:</b> the remote path does not contain this site's locked domain <b>{t.domain}</b>. Publishing is disabled to protect your other sites. Fix the path in <b>Admin → Hostinger SFTP</b> to <code>.../domains/{t.domain}/public_html</code>.</p>
           )}
           <div className="modal-actions">
             <button className="btn ghost" data-testid="publish-cancel" onClick={onClose}>Cancel</button>
-            <button className="btn primary" data-testid="publish-confirm" disabled={busy || !t.path_ok} onClick={go}>{busy ? "Publishing…" : "Yes, publish to this folder"}</button>
+            <button className="btn primary" data-testid="publish-confirm" disabled={busy || !t.path_ok} onClick={go}>{busy ? "Publishing…" : "Publish now"}</button>
           </div>
         </>
       )}
+    </Modal>
+  );
+}
+
+function PublishHistory({ site, onClose, flash }) {
+  const [items, setItems] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const load = () => axios.get(`${API}/sites/${site}/backups`).then(r => setItems(r.data)).catch(() => setItems([]));
+  useEffect(() => { load(); }, [site]);
+  const fmt = (iso) => { try { return new Date(iso).toLocaleString(); } catch { return iso; } };
+  const kb = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.round(n / 1024) + " KB";
+  const restore = async (b) => {
+    if (!window.confirm(`Put this version back LIVE on Hostinger?\n\n${fmt(b.created)}\n\nVisitors will see this exact version immediately. Your current live version stays saved in this list, so this is reversible too.`)) return;
+    setBusy(b.name); flash("Pushing this version live…");
+    try {
+      const { data } = await axios.post(`${API}/sites/${site}/restore`, { name: b.name });
+      flash(data.message || "Restored live.");
+    } catch (e) { flash("Restore failed — check SFTP settings."); }
+    finally { setBusy(null); }
+  };
+  return (
+    <Modal title="Publish history & live rollback" onClose={onClose} wide>
+      <p className="hint">Every publish saves a full backup of the exact files that went live. Roll the <b>live Hostinger site</b> back to any of these in one click — handy if a client publishes something they'd like to reverse.</p>
+      {!items && <div className="muted">Loading…</div>}
+      {items && items.length === 0 && <div className="muted" data-testid="no-backups">No publishes yet — backups appear here after your first publish.</div>}
+      <div className="version-list">
+        {items && items.map((b, i) => (
+          <div className="version-row" key={b.name} data-testid={`backup-${b.name}`}>
+            <div>
+              <div className="version-date"><span className={`vbadge ${i === 0 ? "b-live" : "b-auto"}`}>{i === 0 ? "● Live now" : "Backup"}</span> {fmt(b.created)}</div>
+              <div className="version-meta">{kb(b.size)}</div>
+            </div>
+            {i !== 0 && (
+              <button className="btn" disabled={busy === b.name} data-testid={`restore-live-${b.name}`} onClick={() => restore(b)}>
+                {busy === b.name ? "Pushing…" : "Restore this version live"}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     </Modal>
   );
 }
@@ -1117,6 +1246,7 @@ function Dashboard() {
               <button className="btn" data-testid="add-page-btn" onClick={() => setModal("addpage")}>+ New page</button>
               <button className="btn" data-testid="find-replace-btn" onClick={() => setModal("replace")}>Find &amp; Replace</button>
               <button className="btn" data-testid="version-history-btn" onClick={() => setModal("versions")}>Restore points</button>
+              {isAdmin && <button className="btn" data-testid="publish-history-btn" onClick={() => setModal("pubhistory")}>Publish history</button>}
               <button className="btn" data-testid="preview-btn" onClick={preview}>Preview</button>
               <button className="btn primary" data-testid="publish-btn" onClick={() => setModal("publish")}>Publish to Hostinger</button>
             </div>
@@ -1153,7 +1283,8 @@ function Dashboard() {
       {modal === "help" && <HelpModal onClose={() => setModal(null)} />}
       {modal === "versions" && site && <VersionHistory site={site.slug} flash={flash} onClose={() => setModal(null)} onRestored={() => loadSites(site.slug)} />}
       {modal === "admin" && <AdminSettings user={user} flash={flash} onClose={() => setModal(null)} onSitesChanged={() => loadSites()} />}
-      {modal === "publish" && site && <PublishConfirm site={site.slug} flash={flash} onClose={() => setModal(null)} />}
+      {modal === "publish" && site && <PublishConfirm site={site.slug} isAdmin={isAdmin} flash={flash} onClose={() => setModal(null)} />}
+      {modal === "pubhistory" && site && <PublishHistory site={site.slug} flash={flash} onClose={() => setModal(null)} />}
       {toast && <div className="toast" data-testid="toast">{toast}</div>}
       <Footer />
     </div>

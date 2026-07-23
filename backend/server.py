@@ -2299,6 +2299,41 @@ async def list_backups(slug: str, u=Depends(current_user)):
                     "created":datetime.fromtimestamp(st.st_mtime,timezone.utc).isoformat()})
     return out
 
+@api.get("/sites/{slug}/publish-changes")
+async def publish_changes(slug: str, u=Depends(current_user)):
+    """Build the site now and compare it against the last published backup so the
+    user sees exactly what will change BEFORE anything goes live."""
+    import hashlib
+    s = await db.sites.find_one({"slug":slug})
+    if not s: raise HTTPException(404,"Site not found")
+    pages=[x async for x in db.pages.find({"site":slug})]
+    out = build_dist(slug, pages, s["source_dir"], site=s)
+    def _md5(b): return hashlib.md5(b).hexdigest()
+    new_files={}
+    for root,_,files in os.walk(out):
+        for f in files:
+            fp=os.path.join(root,f); rel=os.path.relpath(fp,out).replace("\\","/")
+            with open(fp,"rb") as fh: new_files[rel]=_md5(fh.read())
+    backups=sorted(glob.glob(os.path.join(BACKUP_DIR,f"{slug}-*.zip")), reverse=True)
+    if not backups:
+        return {"has_baseline":False,"pages":len(pages),
+                "added":sorted(new_files.keys()),"changed":[],"removed":[]}
+    old_files={}
+    try:
+        with zipfile.ZipFile(backups[0]) as z:
+            for n in z.namelist():
+                if n.endswith("/"): continue
+                old_files[n.replace("\\","/")]=_md5(z.read(n))
+    except Exception:
+        return {"has_baseline":False,"pages":len(pages),
+                "added":sorted(new_files.keys()),"changed":[],"removed":[]}
+    added=sorted(k for k in new_files if k not in old_files)
+    removed=sorted(k for k in old_files if k not in new_files)
+    changed=sorted(k for k in new_files if k in old_files and new_files[k]!=old_files[k])
+    return {"has_baseline":True,"pages":len(pages),
+            "baseline":os.path.basename(backups[0]),
+            "added":added,"changed":changed,"removed":removed}
+
 @api.post("/sites/{slug}/restore")
 async def restore(slug: str, body: dict, u=Depends(require_admin)):
     import tempfile
