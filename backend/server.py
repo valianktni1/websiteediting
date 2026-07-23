@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v20-stable-ids"
+BUILD_VERSION = "2026-06-13-cms-v21-soft-outline"
 
 @api.get("/version")
 async def version():
@@ -726,12 +726,18 @@ STATUS_CSS = """<style>
 EDITOR_INJECT = """
 <style>
 [data-eid]{outline:1px dashed rgba(167,140,70,0);transition:outline .12s;cursor:pointer}
-[data-eid]:hover{outline:2px dashed #A78C46;outline-offset:2px}
-[data-eid].ed-sel{outline:2px solid #A78C46;outline-offset:2px}
+[data-eid]:hover{outline:1px solid rgba(167,140,70,.5);outline-offset:1px}
+[data-eid].ed-sel{outline:1px solid #A78C46;outline-offset:1px}
 [data-eid][contenteditable="true"]{cursor:text}
 img[data-eid]{cursor:grab}
 img[data-eid].ed-drag{opacity:.4}
-img[data-eid].ed-over{outline:3px solid #A78C46 !important;outline-offset:2px}
+img[data-eid].ed-over{outline:2px solid #A78C46 !important;outline-offset:1px}
+/* never draw a big box around an element that WRAPS a whole card (a link/button around an
+   image, grid or block) — only the exact word/photo you point at gets a subtle line */
+a[data-eid]:has(img,picture,svg,div,section,article,ul,ol,h1,h2,h3,p):hover,
+a[data-eid]:has(img,picture,svg,div,section,article,ul,ol,h1,h2,h3,p).ed-sel,
+button[data-eid]:has(img,picture,svg,div,section,article):hover,
+button[data-eid]:has(img,picture,svg,div,section,article).ed-sel{outline:none !important}
 #ed-tb{position:absolute;z-index:2147483000;display:none;flex-wrap:wrap;align-items:center;gap:4px;max-width:520px;background:#12151b;border:1px solid #A78C46;border-radius:8px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-family:Arial,sans-serif}
 #ed-tb button{background:#232833;color:#e9ecf1;border:1px solid #3a4150;border-radius:5px;padding:5px 9px;font-size:12px;line-height:1;cursor:pointer;white-space:nowrap}
 #ed-tb button:hover{background:#A78C46;color:#161616;border-color:#A78C46}
