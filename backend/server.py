@@ -692,6 +692,7 @@ def render_page(page, for_editor=False, asset_base=""):
 {editor_assets}</head><body>{inner}{finance_assets}</body></html>"""
 
 BLANK_IMG = "data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'940'%20height%3D'705'%3E%3Crect%20width%3D'100%25'%20height%3D'100%25'%20fill%3D'%23e9ecf1'%2F%3E%3Ctext%20x%3D'50%25'%20y%3D'50%25'%20fill%3D'%239aa1ac'%20font-family%3D'Arial%2Csans-serif'%20font-size%3D'40'%20text-anchor%3D'middle'%20dominant-baseline%3D'middle'%3E%2B%20Add%20photo%3C%2Ftext%3E%3C%2Fsvg%3E"
+from assets_data import COMING_SOON_IMG
 
 # Sold / Reserved / New-in ribbon styling, injected by the CMS so badges always render on car cards,
 # even when a site's own stylesheet doesn't include them. Generic: targets any [data-block][data-status].
@@ -799,6 +800,7 @@ document.addEventListener('DOMContentLoaded',function(){
       var b2=mk('Delete',function(){post({t:'op',op:'delete-block',eid:eid});}); b2.className='ed-block-btn';
       tb.appendChild(b1); tb.appendChild(b6); tb.appendChild(b4); tb.appendChild(b5); tb.appendChild(b2);
       if(blk.hasAttribute('data-status') || (blk.getAttribute('data-block')||'').toLowerCase().indexOf('car')>=0 || blk.querySelector('.price,.uc-price,[class*="price"]')){
+        var bc=mk('+ Add another car',function(){post({t:'op',op:'add-blank-car',eid:eid});}); bc.className='ed-block-btn'; tb.appendChild(bc);
         var b3=mk('Status',function(){post({t:'status',eid:eid});}); b3.className='ed-block-btn'; tb.appendChild(b3);
       }
     }
@@ -1152,7 +1154,7 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})
     if not p: raise HTTPException(404,"Page not found")
-    if body.op not in ("duplicate","delete","add-image","add-button","add-el","move-up","move-down","swap-image","duplicate-block","delete-block","add-blank-block","move-block-up","move-block-down","status-sold","status-reserved","status-new","status-clear","set-logo"):
+    if body.op not in ("duplicate","delete","add-image","add-button","add-el","move-up","move-down","swap-image","duplicate-block","delete-block","add-blank-block","add-blank-car","move-block-up","move-block-down","status-sold","status-reserved","status-new","status-clear","set-logo"):
         raise HTTPException(400,"Unknown operation")
     if body.op == "swap-image":
         r1 = p.get("regions",{}).get(body.eid); r2 = p.get("regions",{}).get(body.ref or "")
@@ -1260,6 +1262,47 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
             if not el.get_text(strip=True): continue
             if el.name in ("a","button"): continue
             el.clear(); el.append("Edit")
+        block.insert_after(clone)
+    elif body.op == "add-blank-car":
+        block = target.find_parent(attrs={"data-block": True})
+        if not block:
+            raise HTTPException(400,"This element isn't inside a car card.")
+        import copy as _c
+        clone = _c.copy(block)
+        if clone.has_attr("data-status"): clone["data-status"] = ""
+        # collapse each gallery/slider down to a single Coming-Soon slide
+        seen = set()
+        for img in list(clone.find_all("img")):
+            pid = id(img.parent)
+            if pid in seen: img.decompose()
+            else: seen.add(pid)
+        for img in clone.find_all("img"):
+            img["src"] = COMING_SOON_IMG
+            for a in ("srcset","sizes","data-src","data-srcset","data-lazy-src","loading"):
+                if img.has_attr(a): del img[a]
+            img["alt"] = ""
+        def _reset(el, txt):
+            el.clear(); el.append(txt)
+        title = clone.select_one(".uc-car-head h3") or clone.select_one("h3") or clone.select_one("h2")
+        if title is not None: _reset(title, "Make & Model")
+        price = clone.select_one(".uc-price")
+        if price is None:
+            for el in clone.find_all(True):
+                if "price" in " ".join(el.get("class") or []).lower(): price = el; break
+        if price is not None: _reset(price, "\u00a30000")
+        strap = clone.select_one(".uc-strap")
+        if strap is not None: _reset(strap, "Add a short description of this car here.")
+        for sp in clone.select(".uc-spec b"):
+            _reset(sp, "\u2013")
+        for li in clone.select(".uc-features li"):
+            _reset(li, "spec")
+        # fallback for non-uc car markup: blank the editable text generically
+        if not clone.select(".uc-car-head, .uc-price, .uc-specs, .uc-features"):
+            for el in clone.find_all(list(EDIT_TAGS)):
+                if el.find(list(EDIT_TAGS)): continue
+                if not el.get_text(strip=True): continue
+                if el.name in ("a","button"): continue
+                el.clear(); el.append("Edit")
         block.insert_after(clone)
     elif body.op in ("move-block-up","move-block-down"):
         block = target.find_parent(attrs={"data-block": True})

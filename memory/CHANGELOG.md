@@ -53,3 +53,12 @@ Requested against the Ribble Valley / used-cars template; applied to ALL car-sty
    survives SFTP publish. Matches user's PDF.
 Files: `server.py` (editor JS + add-el op), `templates_seed.py` (blank cars + import),
 `assets_data.py` (NEW inline coming-soon asset).
+
+### "+ Add another car" one-click button (DONE — verified)
+- New editor op `add-blank-car` in `server.py`: clones the selected car card, collapses its
+  gallery to a single COMING SOON slide, and resets title→"Make & Model", price→"£0000",
+  strap→placeholder, spec values→"–", feature chips→"spec". Graceful fallback (blank editable
+  text) for non-uc car markup.
+- Toolbar: **"+ Add another car"** button added to the Card group, shown only on car cards
+  (same detection as the Status button). Verified: 2 cars → 3, new card is a proper blank
+  Coming-Soon car. Lets clients build a stock list without duplicating an existing card.
