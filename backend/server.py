@@ -1575,12 +1575,47 @@ def _apply_clean_urls(out, pages, domain):
             open(fp, "w", encoding="utf-8").write(html)
     if domain:
         d = domain.rstrip("/")
+        # Preserve any hand-crafted <lastmod>/<changefreq>/<priority> from the existing
+        # sitemap, re-keyed to the new clean URLs. Falls back to sane defaults per page.
+        def _norm(u):
+            u = re.sub(r'^https?://[^/]+', '', (u or '').strip())
+            if not u.startswith('/'): u = '/' + u
+            u = re.sub(r'/index\.html$', '/', u)
+            if u.endswith('.html'): u = u[:-5]
+            if len(u) > 1: u = u.rstrip('/')
+            return u or '/'
+        preserved = {}
+        sm_path = os.path.join(out, "sitemap.xml")
+        try:
+            if os.path.exists(sm_path):
+                old = open(sm_path, encoding="utf-8").read()
+                for blk in re.findall(r'<url>(.*?)</url>', old, re.S | re.I):
+                    lm = re.search(r'<loc>(.*?)</loc>', blk, re.S | re.I)
+                    if not lm: continue
+                    key = _norm(lm.group(1))
+                    def _tag(name):
+                        m = re.search(rf'<{name}>(.*?)</{name}>', blk, re.S | re.I)
+                        return m.group(1).strip() if m else None
+                    preserved[key] = {"lastmod": _tag("lastmod"),
+                                      "changefreq": _tag("changefreq"),
+                                      "priority": _tag("priority")}
+        except Exception:
+            preserved = {}
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         urls = sorted({_clean_path(_page_relpath(p)) for p in pages})
-        items = "\n".join(f'  <url><loc>{d}{u}</loc></url>' for u in urls)
+        blocks = []
+        for u in urls:
+            info = preserved.get(_norm(u), {})
+            lastmod = info.get("lastmod") or today
+            changefreq = info.get("changefreq") or "monthly"
+            priority = info.get("priority") or ("1.0" if u == "/" else "0.8")
+            blocks.append(
+                f'  <url>\n    <loc>{d}{u}</loc>\n    <lastmod>{lastmod}</lastmod>\n'
+                f'    <changefreq>{changefreq}</changefreq>\n    <priority>{priority}</priority>\n  </url>')
         sm = ('<?xml version="1.0" encoding="UTF-8"?>\n'
               '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-              f'{items}\n</urlset>\n')
-        open(os.path.join(out, "sitemap.xml"), "w", encoding="utf-8").write(sm)
+              + "\n".join(blocks) + '\n</urlset>\n')
+        open(sm_path, "w", encoding="utf-8").write(sm)
         rp = os.path.join(out, "robots.txt")
         if not os.path.exists(rp):
             open(rp, "w", encoding="utf-8").write(f"User-agent: *\nAllow: /\n\nSitemap: {d}/sitemap.xml\n")
