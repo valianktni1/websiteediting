@@ -760,6 +760,11 @@ document.addEventListener('DOMContentLoaded',function(){
       tb.appendChild(mk('+ Add photos',function(){post({t:'bulk-image',eid:eid,ar:_ar(el)});}));
       tb.appendChild(mk('Alt text',function(){post({t:'alt',eid:eid,alt:el.getAttribute('alt')||''});}));
       tb.appendChild(mk('Caption',function(){post({t:'caption',eid:eid,caption:el.getAttribute('data-caption')||''});}));
+      if(blk){ tb.appendChild(mk('Delete photo',function(){if(confirm('Delete just this photo?'))post({t:'op',op:'delete',eid:eid});})); }
+    }
+    if(el.tagName==='LI'){
+      tb.appendChild(mk('+ Add feature',function(){post({t:'op',op:'add-el',eid:eid,kind:'listitem'});}));
+      tb.appendChild(mk('Delete feature',function(){if(confirm('Delete this feature?'))post({t:'op',op:'delete',eid:eid});}));
     }
     if(isLink && !blk){
       tb.appendChild(mk('Link',function(){post({t:'link',eid:eid,href:el.getAttribute('href')||''});}));
@@ -1191,6 +1196,7 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
         kind = (body.kind or "paragraph").lower()
         block = target.find_parent(attrs={"data-block": True})
         anchor = block if block is not None else target
+        placed = False
         if kind == "heading":
             new = soup.new_tag("h2"); new.string = "New heading"
         elif kind == "button":
@@ -1200,9 +1206,19 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
             new.string = "New button"
         elif kind == "image":
             new = soup.new_tag("img"); new["src"] = BLANK_IMG; new["alt"] = ""
+        elif kind == "listitem":
+            new = soup.new_tag("li"); new.string = "New feature"
+            li = target if target.name == "li" else target.find_parent("li")
+            if li is not None:
+                if li.get("class"): new["class"] = li.get("class")
+                li.insert_after(new); placed = True
+            else:
+                ul = target if target.name in ("ul","ol") else target.find_parent(["ul","ol"])
+                if ul is not None: ul.append(new); placed = True
         else:
             new = soup.new_tag("p"); new.string = "New paragraph — click to edit."
-        anchor.insert_after(new)
+        if not placed:
+            anchor.insert_after(new)
     elif body.op=="move-up":
         prev = target.find_previous_sibling()
         if prev: prev.insert_before(target.extract())

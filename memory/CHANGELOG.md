@@ -35,3 +35,21 @@ Notes:
 - Change-summary + preview + undo blocks are SFTP-gated → visible in TrueNAS (prod),
   not in preview (SFTP unconfigured). Endpoint logic verified via curl.
 - test_credentials unchanged.
+
+### Used-Cars template editor improvements (DONE — all verified)
+Requested against the Ribble Valley / used-cars template; applied to ALL car-style pages.
+1. **Delete single photo** — `select()` in `server.py` editor JS now shows a **"Delete photo"**
+   button for images inside a `[data-block]` (posts `op:delete` on the img eid). Verified:
+   deleting one slider image removes just that image, the car card stays intact.
+2. **Add/remove features** — feature `<li>` now shows **"+ Add feature"** (new op path
+   `add-el kind=listitem` inserts `<li>New feature</li>` after the clicked chip) and
+   **"Delete feature"**. Verified new editable chip is added.
+3. **Enquire button** — confirmed working: template JS reads `.uc-car-head h3` (make & model)
+   and mails to `data-enquiry-email`, which `create_page_from_template` replaces with the
+   site's chosen email. Verified `sales@yourgarage.co.uk` → site email on page create.
+4. **Blank starter cars** — `_CAR1`/`_CAR2` in `templates_seed.py` rewritten to
+   "Make & Model / £0000 / dash specs / spec chips" with a compressed inline
+   **COMING SOON** webp data-URI (`backend/assets_data.py`, ~49KB). Self-contained so it
+   survives SFTP publish. Matches user's PDF.
+Files: `server.py` (editor JS + add-el op), `templates_seed.py` (blank cars + import),
+`assets_data.py` (NEW inline coming-soon asset).

@@ -2,6 +2,8 @@
 collide with a host site's CSS, and tokenised (var(--brand-*)) so they adopt each
 site's accent colour + fonts when added as a page."""
 
+from assets_data import COMING_SOON_IMG
+
 USED_CARS_CSS = """
 .uc-tpl{--acc:var(--brand-accent,#d7a24b);--accd:var(--brand-accent-dark,#b8863a);--onacc:var(--brand-on-accent,#1a1205);--hf:var(--brand-heading,'Sora','Segoe UI',sans-serif);--bf:var(--brand-body,'Manrope','Segoe UI',sans-serif);--ink:#14181e;--muted:#5b6472;--line:#e6e8ec;--dark:#0f1114;--surface:#fff;color:var(--ink);font-family:var(--bf);line-height:1.6}
 .uc-tpl *{box-sizing:border-box}
@@ -206,24 +208,20 @@ def _car(title, price, strap, specs, features, imgs):
       </article>"""
 
 _CAR1 = _car(
-    "2021 Mercedes-Benz C-Class", "&pound;21,995",
-    "C220d AMG Line 9G-Tronic &middot; 1 owner &middot; Full service history",
-    [("Year", "2021 (21)"), ("Mileage", "28,400 miles"), ("Engine", "2.0L Diesel"),
-     ("Gearbox", "Automatic"), ("Fuel economy", "56.5 mpg"), ("Colour", "Cavansite Blue")],
-    ["Heated leather seats", "Reversing camera", "Apple CarPlay", "LED headlights"],
-    ["https://images.pexels.com/photos/27001011/pexels-photo-27001011.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-     "https://images.unsplash.com/photo-1625690180114-5530b1304127?crop=entropy&cs=srgb&fm=jpg&q=85&w=1000",
-     "https://images.unsplash.com/photo-1667893591090-19729ae8fee3?crop=entropy&cs=srgb&fm=jpg&q=85&w=1000"])
+    "Make &amp; Model", "&pound;0000",
+    "Add a short description of this car here.",
+    [("Year", "&ndash;"), ("Mileage", "&ndash;"), ("Engine", "&ndash;"),
+     ("Gearbox", "&ndash;"), ("Fuel economy", "&ndash;"), ("Colour", "&ndash;")],
+    ["spec", "spec", "spec", "spec"],
+    [COMING_SOON_IMG])
 
 _CAR2 = _car(
-    "2020 Porsche 718 Cayman", "&pound;38,750",
-    "2.0T PDK &middot; Sport Chrono Pack &middot; Just serviced",
-    [("Year", "2020 (70)"), ("Mileage", "19,100 miles"), ("Engine", "2.0L Petrol"),
-     ("Gearbox", "Automatic (PDK)"), ("Fuel economy", "34.9 mpg"), ("Colour", "GT Silver")],
-    ["Sport exhaust", "Bose sound", "20&Prime; alloys", "Heated seats"],
-    ["https://images.pexels.com/photos/37742006/pexels-photo-37742006.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-     "https://images.unsplash.com/photo-1549064233-945d7063292f?crop=entropy&cs=srgb&fm=jpg&q=85&w=1000",
-     "https://images.unsplash.com/photo-1621639532859-8b26570b96fc?crop=entropy&cs=srgb&fm=jpg&q=85&w=1000"])
+    "Make &amp; Model", "&pound;0000",
+    "Add a short description of this car here.",
+    [("Year", "&ndash;"), ("Mileage", "&ndash;"), ("Engine", "&ndash;"),
+     ("Gearbox", "&ndash;"), ("Fuel economy", "&ndash;"), ("Colour", "&ndash;")],
+    ["spec", "spec", "spec", "spec"],
+    [COMING_SOON_IMG])
 
 USED_CARS_HTML = f"""
 <div class="uc-tpl" data-enquiry-email="sales@yourgarage.co.uk">
