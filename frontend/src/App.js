@@ -349,17 +349,28 @@ function HelpModal({ onClose }) {
         <h4>Photos</h4>
         <ul>
           <li>Click a photo, then <b>Replace</b> to swap it (you can crop &amp; zoom to fit the frame).</li>
-          <li><b>+ Add photos</b> turns a single photo into a swipeable gallery.</li>
+          <li><b>+ Add photos</b> turns a single photo into a swipeable gallery — add as many as you like.</li>
+          <li><b>Delete photo</b> removes just that one photo. It only removes the picture — the car or listing stays exactly where it is.</li>
           <li>Drag one photo onto another to reorder them.</li>
           <li><b>Alt text</b> describes the photo for Google — hit the ✨ button to let AI write it.</li>
         </ul>
 
-        <h4>Car listings</h4>
+        <h4>Car &amp; bike listings</h4>
         <ul>
-          <li>Click a car's title, price or a spec to bring up the <b>Card</b> toolbar.</li>
-          <li><b>Duplicate</b> a car to add a similar one, or <b>+ Blank card</b> to start a fresh listing.</li>
-          <li><b>Status</b> lets you mark a car <b>Sold</b>, <b>Reserved</b> or <b>New in</b> — a ribbon appears automatically, and Sold cars drop to the bottom of the list on your live site.</li>
+          <li>Click a listing's title, price or a spec (like <b>Year</b> or <b>Mileage</b>) and type over it.</li>
+          <li><b>+ Add another car</b> drops in a fresh blank "Coming soon" listing in one click — no need to copy an old one and wipe it. (On bikes it does the same thing.)</li>
+          <li><b>Duplicate</b> makes a copy of a listing if you'd rather start from one you've already filled in.</li>
+          <li><b>Status</b> lets you mark a listing <b>Sold</b>, <b>Reserved</b> or <b>New in</b> — a ribbon appears automatically, and Sold ones drop to the bottom of the list on your live site.</li>
+          <li>Use the <b>◀ Move</b> / <b>Move ▶</b> buttons to change the order listings appear in.</li>
           <li>A <b>"From £x/mo"</b> finance estimate is added to each car automatically on the live site.</li>
+          <li>The <b>Enquire about this car</b> button opens a little form that already knows which make &amp; model the customer is asking about, and sends it straight to your enquiries email.</li>
+        </ul>
+
+        <h4>Features (the little chips)</h4>
+        <ul>
+          <li>Each listing has a row of feature "chips" (things like <i>Heated seats</i> or <i>Reversing camera</i>). Click one and type over it.</li>
+          <li><b>+ Add feature</b> adds another chip — repeat it for as many features as you want.</li>
+          <li><b>Delete feature</b> removes a chip you don't need.</li>
         </ul>
 
         <h4>Change something everywhere</h4>
@@ -367,16 +378,25 @@ function HelpModal({ onClose }) {
           <li>Use <b>Find &amp; Replace</b> (top of the dashboard) to change a word across every page at once — great for removing an old name or fixing a repeated typo.</li>
         </ul>
 
+        <h4>Adding &amp; ordering pages</h4>
+        <ul>
+          <li><b>+ New page</b> creates a new page for you (you can start from a ready-made layout).</li>
+          <li>On the dashboard, drag the page cards to change the order they appear in your menu.</li>
+        </ul>
+
         <h4>Safety net</h4>
         <ul>
-          <li>Made a mistake? Hit <b>↶ Undo last change</b> while editing.</li>
-          <li>Want to jump back further? <b>Restore points</b> on the dashboard rolls the whole site back to any earlier moment — and even that can be undone.</li>
+          <li>Made a mistake? Hit <b>↶ Undo</b> while editing.</li>
+          <li><b>Restore points</b> on the dashboard roll the whole site back to how it was at any earlier moment — and even that can be undone. Nothing is ever lost.</li>
         </ul>
 
         <h4>Going live</h4>
         <ul>
           <li><b>Preview</b> opens your site in a new tab exactly as visitors will see it.</li>
-          <li><b>Publish to Hostinger</b> pushes it live. A safety lock stops one site ever overwriting another.</li>
+          <li><b>Publish to Hostinger</b> pushes it live. Before it does, it shows you <b>a plain list of what's about to change</b>, and there's a <b>Preview exactly what will go live</b> button so there are no surprises.</li>
+          <li>A safety lock means a site can never accidentally overwrite a different one.</li>
+          <li>Changed your mind straight after publishing? Hit <b>Undo this publish</b> to put the previous version back live in one click.</li>
+          <li><b>Publish history</b> (dashboard) keeps a backup of every publish — roll the live site back to any earlier version whenever you need to.</li>
         </ul>
       </div>
       <div className="modal-actions">
