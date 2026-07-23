@@ -2481,13 +2481,31 @@ async def startup():
             "name": admin_name, "role": "superadmin", "site_id": None, "created_at": datetime.now(timezone.utc).isoformat()})
     elif ex.get("role") != "superadmin":
         await db.users.update_one({"_id": ex["_id"]}, {"$set": {"role": "superadmin"}})
-    # auto-ingest any site folder (with .html files) that isn't ingested yet
+    # First-boot onboarding: ingest a site's HTML from disk ONCE. After that the DATABASE
+    # is the source of truth. We drop a ".ingested" marker so a site is NEVER silently
+    # rebuilt from (possibly stale/blank) disk files again — that once wiped a client's
+    # edited listings back to the blank "Coming Soon" starter. If a previously-ingested
+    # site goes missing from the DB, we skip and log instead of clobbering; restore the DB
+    # from a backup instead.
     if os.path.isdir(SITES_DIR):
         for name in sorted(os.listdir(SITES_DIR)):
             p = os.path.join(SITES_DIR, name)
-            if os.path.isdir(p) and glob.glob(os.path.join(p, "*.html")):
-                if not await db.sites.find_one({"slug": name}):
-                    await ingest_site(name)
+            if not (os.path.isdir(p) and glob.glob(os.path.join(p, "*.html"))):
+                continue
+            marker = os.path.join(p, ".ingested")
+            if await db.sites.find_one({"slug": name}):
+                if not os.path.exists(marker):
+                    try: open(marker, "w").write(datetime.now(timezone.utc).isoformat())
+                    except Exception: pass
+                continue
+            if os.path.exists(marker):
+                print(f"[startup] Site '{name}' was ingested before but is missing from the "
+                      f"database. SKIPPING auto-ingest so stale/blank disk files can't overwrite "
+                      f"saved edits. Restore MongoDB from a backup if this is unexpected.")
+                continue
+            await ingest_site(name)
+            try: open(marker, "w").write(datetime.now(timezone.utc).isoformat())
+            except Exception: pass
     # seed / refresh built-in page templates (idempotent by key)
     for t in BUILTIN_TEMPLATES:
         await db.templates.update_one({"key": t["key"]}, {"$set": {

@@ -102,3 +102,19 @@ repaired manually (retype the button text, delete the stray chip) or rolled back
 Restore point.
 Gold outlines around cards = normal editor hover/selection highlight on `[data-eid]`
 elements only; never shows on the live site. Not a bug.
+
+### Deploy-time data-loss guard (DONE — startup auto-ingest hardened)
+Symptom: after a deploy, Broadfield's used-cars listings reset to the blank "Coming Soon"
+starter. Cause: startup auto-ingest rebuilt the site from the stale/blank HTML in
+`/data/sites/<slug>/` because the site was (momentarily) absent from MongoDB.
+Persistence itself is fine — compose mounts `/mnt/apps/website_editor/mongo:/data/db`
+and a `backup` service mongodumps daily (30-day retention).
+Fix in `server.py` startup: a site is auto-ingested from disk ONCE (drops a `.ingested`
+marker in its source folder). If a site with that marker later goes missing from the DB,
+startup SKIPS re-ingest and logs a warning instead of overwriting edits with stale files.
+DB remains the source of truth; recover from the daily DB backup if needed.
+Verified: backend restarts clean, /api/version = 2026-06-13-cms-v20-stable-ids.
+CRITICAL deploy note: build context is the GitHub repo
+(github.com/valianktni1/websiteediting#main), so the user MUST push latest code via
+"Save to GitHub" BEFORE rebuilding on TrueNAS, and must REBUILD the image (not just
+restart) + recreate the container. Confirm with /api/version showing v20-stable-ids.
