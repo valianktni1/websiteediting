@@ -731,13 +731,49 @@ function SftpTab({ flash }) {
     catch (e) { setTestMsg("✗ " + (e.response?.data?.detail || "Test failed")); }
     finally { setTesting(false); }
   };
+  const [pulling, setPulling] = useState(false); const [pullMsg, setPullMsg] = useState("");
+  const pull = async () => {
+    if (!slug) return;
+    const label = sites.find(s => s.slug === slug)?.name || slug;
+    if (!window.confirm(`Pull the latest files for "${label}" from Hostinger?\n\n• Downloads this site's CURRENT live files and refreshes them in the editor.\n• ⚠️ Replaces the editor copy (a restore point is saved first, so you can undo).\n• Read-only from your server — your LIVE site is NOT touched.\n\nContinue?`)) return;
+    setPulling(true); setPullMsg("Connecting to your server…");
+    try {
+      const { data } = await axios.post(`${API}/sites/${slug}/pull`);
+      const jobId = data.job_id;
+      let ticks = 0;
+      const poll = setInterval(async () => {
+        ticks++;
+        try {
+          const { data: st } = await axios.get(`${API}/sites/add-status/${jobId}`);
+          setPullMsg(st.message);
+          if (st.state === "done") { clearInterval(poll); setPulling(false); flash(st.message); }
+          else if (st.state === "error") { clearInterval(poll); setPulling(false); }
+        } catch (e) { /* keep polling */ }
+        if (ticks > 120) { clearInterval(poll); setPulling(false); setPullMsg("✗ Timed out waiting for the pull. Run 'Test connection' first, then try again."); }
+      }, 1500);
+    } catch (e) {
+      setPulling(false); setPullMsg("✗ " + (e.response?.data?.detail || "Pull failed"));
+    }
+  };
   return (
     <div className="admin-form">
       <label>Site</label>
       <select data-testid="sftp-site" value={slug} onChange={e => setSlug(e.target.value)}>
         {sites.map(s => <option key={s.slug} value={s.slug}>{s.name || s.slug}</option>)}
       </select>
-      <label>Locked domain 🔒</label>
+      <div className="pull-box" data-testid="pull-box" style={{marginTop:12,padding:"14px 16px",border:"1px solid rgba(198,167,94,.35)",borderRadius:10,background:"rgba(198,167,94,.06)"}}>
+        <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:12,justifyContent:"space-between"}}>
+          <div style={{minWidth:220,flex:1}}>
+            <div style={{fontWeight:600}}>Pull latest from server</div>
+            <div className="hint" style={{marginTop:2}}>Grabs the selected site's current files from Hostinger and refreshes the editor. Handy after you edit files directly on the server. <b>Your live site is not touched.</b></div>
+          </div>
+          <button className="btn primary" data-testid="sftp-pull" disabled={!slug || pulling} onClick={pull}>
+            {pulling ? "Pulling…" : "⭳ Pull latest from server"}
+          </button>
+        </div>
+        {pullMsg && <div className={`test-msg ${pullMsg.startsWith("✗") ? "bad" : "ok"}`} data-testid="sftp-pull-result" style={{marginTop:10}}>{pullMsg}</div>}
+      </div>
+      <label style={{marginTop:16}}>Locked domain 🔒</label>
       <input data-testid="sftp-domain" value={f.domain} placeholder="wifetobe.org" onChange={e => setF({ ...f, domain: e.target.value.trim().toLowerCase() })} />
       <div className="hint" style={{marginTop:6}}>Safety lock: the app will <b>refuse to publish</b> unless the remote path below contains this domain — so this site can never overwrite another.</div>
       <label style={{marginTop:16}}>Clean URLs</label>

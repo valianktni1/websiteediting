@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend-only test of new 'Pull latest from server' button on Hostinger SFTP admin tab. All 4 acceptance criteria verified: super-admin login works, pull-box renders at top under the Site dropdown containing the sftp-pull button, confirm dialog is triggered and accepted, and clicking pull for 'broadfield' (no SFTP configured) surfaces the friendly HTTP 400 error message in sftp-pull-result. Existing Test/Save SFTP buttons remain present and no crashes.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (worked)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "SftpTab pull feature verified. pull-box (contains sftp-pull) sits directly under sftp-site dropdown. For 'broadfield' site (no SFTP configured), backend returns 400 with friendly setup message, correctly displayed in [data-testid=sftp-pull-result]. Real successful pull cannot be tested without valid Hostinger credentials.",
+  "verification_details": {
+    "positions": {"box_top": 330.6, "site_top": 274.6, "pull_top": 380.5, "box_contains_pull": true},
+    "pull_result_text": "\u2717 Set up and save this site's Hostinger SFTP details first (host, username, password, remote path), then Test the connection.",
+    "sftp_test_present": true,
+    "sftp_save_present": true,
+    "confirm_dialog_accepted": true,
+    "backend_response_status": 400
+  }
+}

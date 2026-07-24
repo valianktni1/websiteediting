@@ -1998,11 +1998,64 @@ async def _run_add_job(job_id, slug, conf, name, domain):
     await upd(state="done", message=f"Added '{slug}' — pulled {pulled} files, {n} pages ready to edit.", ingested=n)
 
 @api.get("/sites/add-status/{job_id}")
-async def add_status(job_id: str, u=Depends(require_super)):
+async def add_status(job_id: str, u=Depends(require_admin)):
     j = await db.add_jobs.find_one({"_id": job_id})
     if not j: raise HTTPException(404, "Job not found")
     return {"state": j["state"], "message": j["message"], "pulled": j.get("pulled", 0),
             "ingested": j.get("ingested", 0), "slug": j.get("slug")}
+
+@api.post("/sites/{slug}/pull")
+async def pull_site(slug: str, u=Depends(require_admin)):
+    """Re-download an EXISTING site's live files from Hostinger and refresh the editor.
+    Read-only from the server (never publishes); a restore point is saved first."""
+    if not scope_ok(u, slug): raise HTTPException(403, "Not allowed for this site")
+    s = await db.sites.find_one({"slug": slug})
+    if not s: raise HTTPException(404, "Site not found")
+    conf = s.get("sftp") or {}
+    if not conf.get("host") or not conf.get("username") or not conf.get("password"):
+        raise HTTPException(400, "Set up and save this site's Hostinger SFTP details first (host, username, password, remote path), then Test the connection.")
+    job_id = uuid.uuid4().hex
+    await db.add_jobs.insert_one({"_id": job_id, "slug": slug, "state": "starting",
+        "message": "Connecting to your server…", "pulled": 0, "ingested": 0,
+        "created": datetime.now(timezone.utc)})
+    task = asyncio.create_task(_run_pull_job(job_id, slug, conf))
+    _bg_tasks.add(task); task.add_done_callback(_bg_tasks.discard)
+    return {"job_id": job_id, "slug": slug}
+
+async def _run_pull_job(job_id, slug, conf):
+    log = logging.getLogger("uvicorn.error")
+    async def upd(**k): await db.add_jobs.update_one({"_id": job_id}, {"$set": k})
+    staging = os.path.join(SITES_DIR, f".pull-{slug}-{job_id[:8]}")
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        await upd(state="pulling", message="Downloading the latest files from your server…")
+        pulled = await asyncio.to_thread(_sftp_pull, conf, staging)
+    except socket.timeout:
+        shutil.rmtree(staging, ignore_errors=True)
+        await upd(state="error", message="Connection timed out — check the host and port (Hostinger SFTP is usually 65002).")
+        return
+    except Exception as e:
+        shutil.rmtree(staging, ignore_errors=True)
+        log.warning(f"[pull] '{slug}' failed: {e}")
+        await upd(state="error", message=f"Couldn't pull the site: {e}")
+        return
+    # Only touch the existing copy once we know the pull actually returned pages.
+    html_found = glob.glob(os.path.join(staging, "**", "*.html"), recursive=True)
+    if not html_found:
+        shutil.rmtree(staging, ignore_errors=True)
+        await upd(state="error", message=f"Downloaded {pulled} file(s) but found no .html pages in '{conf.get('remote_path','')}'. Point the Remote path at the folder that holds index.html.")
+        return
+    try:
+        await create_snapshot(slug, "pull", "Before pulling latest from server")
+    except Exception:
+        pass
+    local = os.path.join(SITES_DIR, slug)
+    shutil.rmtree(local, ignore_errors=True)
+    os.rename(staging, local)
+    await upd(state="ingesting", message=f"Downloaded {pulled} files. Reading your pages…", pulled=pulled)
+    n = (await ingest_site(slug, force=True))["total"]
+    log.info(f"[pull] '{slug}' DONE — {n} pages ingested")
+    await upd(state="done", message=f"Pulled {pulled} files from your server — {n} page{'s' if n!=1 else ''} refreshed in the editor.", ingested=n)
 
 def _extract_design_zip(zip_bytes, dest):
     """Safely unpack an uploaded site-design zip into dest. Guards against zip-slip and
