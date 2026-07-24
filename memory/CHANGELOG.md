@@ -152,3 +152,27 @@ SFTP configured. Full successful pull not testable in preview (no live SFTP cred
 on TrueNAS where SFTP is set.
 DEPLOY: this is CODE — user must "Save to GitHub" then rebuild+recreate the TrueNAS
 container for the button to appear on their real editor.
+
+### 2026-06-14 — v23-client-ux: 6 client-friendly editor UX improvements (additive)
+
+All additive, no existing edit/publish logic changed. Tested iteration_20.json (frontend 100%, no regressions).
+1. First-visit COACH MARKS overlay (data-testid coach-overlay/coach-dismiss). Persisted via
+   localStorage 'ivd_coach_seen'. 3 tips: click text / click photo / nothing live till Publish.
+2. Always-visible STATUS BAR (data-testid status-bar) replacing the old dirty-bar. Reassures
+   "editing a private draft, nothing live till Publish"; green "Saved" badge (status-saved)
+   flashes on each text save (setJustSaved).
+3. PREVIEW button (editor-preview) -> new backend GET /api/editor/preview/{site}/{page}
+   renders for_editor=False (no toolbar/data-eid) = clean visitor view.
+4. Softer Publish wording: modal title "Publish to Hostinger" -> "Make your changes live";
+   plain-English reassurance copy.
+5. RESET PAGE button (editor-reset) -> new backend POST /api/pages/{site}/{slug}/reset.
+   Snapshots ("pre-reset") + push_undo, then re-ingests the page from its source file on disk
+   (last pulled/imported). Friendly 400 if page has no source file. Live site untouched.
+6. Empty-state hint: EDITOR_INJECT CSS `[data-eid]:empty::before{content:"Click to edit"}`
+   (editor-only, never on live).
+Version bumped backend BUILD_VERSION + frontend UI_BUILD to 2026-06-14-cms-v23-client-ux.
+DEPLOY: CODE — user must Save to GitHub then rebuild+recreate TrueNAS container; footer will
+read v23-client-ux when live.
+
+Repo sync check (this session): user's GitHub zip == preview code (only CRLF vs LF differ);
+Pull button confirmed present in their repo before these UX additions.
