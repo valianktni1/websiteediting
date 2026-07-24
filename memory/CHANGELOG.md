@@ -118,3 +118,37 @@ CRITICAL deploy note: build context is the GitHub repo
 (github.com/valianktni1/websiteediting#main), so the user MUST push latest code via
 "Save to GitHub" BEFORE rebuilding on TrueNAS, and must REBUILD the image (not just
 restart) + recreate the container. Confirm with /api/version showing v20-stable-ids.
+
+### 2026-06 (fork) — Broadfield live cache fix + CMS re-sync + "Pull latest from server" button
+
+**1. Live-site not updating (Broadfield) — root cause: HTML cache.**
+The generated `.htaccess` had `ExpiresByType text/html "access plus 1 day"`, so browsers
+held pages for 24h and edits appeared not to publish. Fixed the site's `.htaccess`:
+- `text/html` -> `access plus 0 seconds`
+- Added `mod_headers` block for `\.html$`: `Cache-Control no-cache, no-store, must-revalidate`,
+  `Pragma no-cache`, `Expires 0` (assets css/js/img still cached 30d/1y).
+User uploaded the corrected `.htaccess` to Hostinger; verified live pages render correctly.
+NOTE: this was a hand-added block in the Broadfield source `.htaccess`, NOT from the CMS
+generator (`_write_clean_htaccess`). If we ever want this global, add it to that generator.
+
+**2. Re-synced Broadfield into the CMS editor (preview instance).**
+CMS only held the `home` page; used-cars/used-bikes existed only live. Downloaded the
+user's `public_html` zip, placed it in `/app/sites_source/broadfield`, ran
+`ingest_site(force=True)` -> 4 pages (home, used-cars, used-bikes, 404). Editor now matches
+live (BMW Z4 + Alfa Giulietta w/ 4 new photos). used-bikes still contains a user's
+half-added blank bike (MAKE & MODEL / £0000) — left as-is (real live content).
+NOTE: this sync was on the PREVIEW DB, not the user's TrueNAS. It does not carry to prod.
+
+**3. NEW FEATURE — "Pull latest from server" button (SFTP tab).**
+Backend `server.py`: `POST /api/sites/{slug}/pull` (require_admin + scope_ok) + `_run_pull_job`.
+Pulls the selected site's live files from Hostinger via SFTP into a staging dir, verifies
+.html present, snapshots ("pull" kind), swaps into source dir, then `ingest_site(force=True)`.
+Read-only from server — NEVER publishes. Reuses proven `_sftp_pull` + polling via
+`GET /api/sites/add-status/{job_id}` (relaxed from require_super -> require_admin).
+Frontend `App.js` SftpTab (~line 701): one `pull-box` under the existing site dropdown with
+`sftp-pull` button, confirm dialog, progress polling, result in `sftp-pull-result`.
+Tested (iteration_19.json, frontend 100%): renders, confirm works, friendly 400 when no
+SFTP configured. Full successful pull not testable in preview (no live SFTP creds) — works
+on TrueNAS where SFTP is set.
+DEPLOY: this is CODE — user must "Save to GitHub" then rebuild+recreate the TrueNAS
+container for the button to appear on their real editor.
