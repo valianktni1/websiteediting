@@ -1110,7 +1110,7 @@ function PublishConfirm({ site, isAdmin, onClose, flash, onPublished }) {
   }
 
   return (
-    <Modal title="Publish to Hostinger" onClose={onClose}>
+    <Modal title="Make your changes live" onClose={onClose}>
       {!t && <div className="muted">Checking target…</div>}
       {t && !t.configured && (
         <>
@@ -1144,13 +1144,13 @@ function PublishConfirm({ site, isAdmin, onClose, flash, onPublished }) {
           <button className="btn ghost" data-testid="preview-changes-btn" onClick={previewChanges} style={{ marginTop: 4, marginBottom: 12 }}>
             👁 Preview exactly what will go live
           </button>
-          <p className="hint">Pushing <b>{t.pages} page(s)</b> to:</p>
+          <p className="hint">This will update <b>{t.pages} page{t.pages === 1 ? "" : "s"}</b> on your live website:</p>
           <div className={`target-box ${t.path_ok ? "" : "blocked"}`} data-testid="publish-target-path">
             <div className="target-host">{t.host}{t.domain ? ` · 🔒 ${t.domain}` : ""}</div>
             <div className="target-path">{t.remote_path || "(account home)"}</div>
           </div>
           {t.path_ok ? (
-            <p className="hint" style={{ marginTop: 12 }}>A full backup is saved first, so this is always reversible. If unsure, cancel and run <b>Test connection</b> first.</p>
+            <p className="hint" style={{ marginTop: 12 }}>Don't worry — a full backup is saved automatically first, so this is <b>always reversible</b>. If you change your mind, you can undo it in one click.</p>
           ) : (
             <p className="hint bad-hint" style={{ marginTop: 12 }} data-testid="publish-blocked">🛑 <b>Blocked:</b> the remote path does not contain this site's locked domain <b>{t.domain}</b>. Publishing is disabled to protect your other sites. Fix the path in <b>Admin → Hostinger SFTP</b> to <code>.../domains/{t.domain}/public_html</code>.</p>
           )}
@@ -1450,6 +1450,9 @@ function Editor({ site, page, onBack, flash }) {
   const [fillingAlt, setFillingAlt] = useState(false);
   const [showSeo, setShowSeo] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showCoach, setShowCoach] = useState(() => { try { return !localStorage.getItem("ivd_coach_seen"); } catch { return false; } });
+  const [justSaved, setJustSaved] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const scrollRef = useRef(0);
 
   const reload = useCallback(() => {
@@ -1461,6 +1464,20 @@ function Editor({ site, page, onBack, flash }) {
     if (!y) return;
     const restore = () => { try { iframeRef.current.contentWindow.scrollTo(0, y); } catch (e) {} };
     restore(); setTimeout(restore, 120); setTimeout(restore, 320);
+  };
+
+  useEffect(() => { if (!justSaved) return; const t = setTimeout(() => setJustSaved(false), 2500); return () => clearTimeout(t); }, [justSaved]);
+  const dismissCoach = () => { try { localStorage.setItem("ivd_coach_seen", "1"); } catch (e) {} setShowCoach(false); };
+  const openPreview = () => window.open(`${API}/editor/preview/${site}/${page}?v=${Date.now()}`, "_blank");
+  const resetPage = async () => {
+    if (!window.confirm("Reset this page back to the last version from your server?\n\n• Undoes ALL the draft changes you've made to THIS page.\n• A restore point is saved first, so you can undo it.\n• Your live website is NOT affected until you Publish.\n\nContinue?")) return;
+    setResetting(true); flash("Resetting page…");
+    try {
+      const { data } = await axios.post(`${API}/pages/${site}/${page}/reset`);
+      flash(data.message || "Page reset"); setDirty(false); setCanUndo(true); reload();
+      axios.get(`${API}/pages/${site}/${page}`).then(r => setSeo(r.data.seo));
+    } catch (e) { flash(e.response?.data?.detail || "Could not reset page"); }
+    finally { setResetting(false); }
   };
 
   useEffect(() => {
@@ -1504,7 +1521,7 @@ function Editor({ site, page, onBack, flash }) {
     const d = ev.data || {};
     if (d.t === "text") {
       await axios.put(`${API}/pages/${site}/${page}/region`, { eid: d.eid, value: d.value });
-      setDirty(true); setCanUndo(true); flash("Saved");
+      setDirty(true); setCanUndo(true); setJustSaved(true); flash("Saved");
     } else if (d.t === "image") {
       pendingEid.current = d.eid; pendingAspect.current = d.ar || 1;
       fileRef.current?.click();
@@ -1608,13 +1625,34 @@ function Editor({ site, page, onBack, flash }) {
         <button className="btn ghost" data-testid="editor-back" onClick={onBack}>← All pages</button>
         <div className="editing-label">Editing: <b>/{page === "home" ? "" : page + "/"}</b></div>
         <div className="topbar-right">
+          <button className="btn ghost" data-testid="editor-preview" onClick={openPreview} title="See your site exactly as visitors will — nothing is published">👁 Preview</button>
           <button className="btn ghost" data-testid="editor-seo" onClick={() => setShowSeo(true)}>⚙ SEO title</button>
           <button className="btn ghost" data-testid="editor-help" onClick={() => setShowHelp(true)}>? Help</button>
+          <button className="btn ghost" data-testid="editor-reset" disabled={resetting} onClick={resetPage} title="Undo all draft changes on this page (a backup is saved first)">↺ Reset page</button>
           <button className="btn ghost" data-testid="editor-undo" disabled={!canUndo} onClick={undo}>↶ Undo</button>
           <button className="btn primary" data-testid="editor-publish-btn" onClick={() => setShowPublish(true)}>Publish</button>
         </div>
       </header>
-      {dirty && <div className="dirty-bar" data-testid="dirty-bar">● Unsaved changes will go live on your next Publish</div>}
+      <div className={`status-bar ${dirty ? "has-draft" : ""}`} data-testid="status-bar">
+        {justSaved && <span className="sb-saved" data-testid="status-saved">✓ Saved</span>}
+        {dirty
+          ? <span>Your changes are <b>saved as a draft</b> — not live yet. Press <b>Publish</b> to put them on your website.</span>
+          : <span>You're editing a private draft. Nothing goes live until you press <b>Publish</b>.</span>}
+      </div>
+      {showCoach && (
+        <div className="coach-overlay" data-testid="coach-overlay" onClick={dismissCoach}>
+          <div className="coach-card" onClick={e => e.stopPropagation()}>
+            <h3>Welcome — editing is easy 👋</h3>
+            <ul>
+              <li><b>👆 Click any text</b> to change the words.</li>
+              <li><b>🖼 Click any photo</b> to swap it for your own.</li>
+              <li><b>🟢 Nothing goes live</b> until you press <b>Publish</b> — so feel free to experiment.</li>
+            </ul>
+            <p className="coach-tip">Use <b>👁 Preview</b> to see your site as visitors will, and <b>↺ Reset page</b> if you ever want to start this page over.</p>
+            <button className="btn primary" data-testid="coach-dismiss" onClick={dismissCoach}>Got it — let's go</button>
+          </div>
+        </div>
+      )}
       <div className="editor-body">
         <iframe
           key={nonce}

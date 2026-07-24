@@ -52,6 +52,25 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .page-frame{ flex:1; border:none; background:#fff; }
 .page-frame.full{ width:100%; }
 .dirty-bar{ background:rgba(201,162,77,.12); color:var(--gold); font-size:.78rem; padding:7px 22px; border-bottom:1px solid var(--line); text-align:center; }
+
+/* draft/saved status bar — always reassures the client that nothing is live yet */
+.status-bar{ display:flex; align-items:center; justify-content:center; gap:12px; font-size:.8rem; padding:8px 22px; border-bottom:1px solid var(--line); background:#12151b; color:var(--muted); }
+.status-bar.has-draft{ background:rgba(201,162,77,.10); color:var(--gold); }
+.status-bar b{ color:#fff; }
+.status-bar.has-draft b{ color:var(--gold); }
+.sb-saved{ background:#1f9d55; color:#fff; font-weight:600; border-radius:20px; padding:2px 12px; font-size:.72rem; letter-spacing:.03em; animation:sbfade .3s ease; }
+@keyframes sbfade{ from{ opacity:0; transform:translateY(-2px); } to{ opacity:1; transform:none; } }
+
+/* first-visit coach marks */
+.coach-overlay{ position:fixed; inset:0; z-index:2000; display:grid; place-items:center; background:rgba(8,10,14,.72); backdrop-filter:blur(4px); animation:sbfade .2s ease; }
+.coach-card{ background:var(--panel); border:1px solid var(--gold); border-radius:16px; padding:30px 32px; width:min(460px,92vw); box-shadow:0 40px 90px -30px rgba(0,0,0,.8); }
+.coach-card h3{ font-family:'Cormorant Garamond',serif; font-size:1.6rem; color:#fff; margin-bottom:16px; }
+.coach-card ul{ list-style:none; display:flex; flex-direction:column; gap:12px; margin-bottom:16px; }
+.coach-card li{ font-size:.95rem; color:#e9ecf1; line-height:1.4; }
+.coach-card li b{ color:var(--gold); }
+.coach-tip{ font-size:.82rem; color:var(--muted); background:#0f1216; border-left:3px solid var(--gold); padding:10px 12px; border-radius:8px; margin-bottom:18px; }
+.coach-tip b{ color:#e9ecf1; }
+.coach-card .btn.primary{ width:100%; padding:12px; text-transform:uppercase; letter-spacing:.04em; font-size:.8rem; }
 .modal-label{ display:block; font-size:.72rem; color:var(--muted); margin:14px 0 6px; text-transform:uppercase; letter-spacing:.05em; }
 .modal-input{ width:100%; background:#0f1216; border:1px solid var(--line); color:#fff; padding:11px 12px; border-radius:8px; font-size:.95rem; font-family:inherit; }
 .modal-input:focus{ outline:none; border-color:var(--gold); }

@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v22-pull-button"
+BUILD_VERSION = "2026-06-14-cms-v23-client-ux"
 
 @api.get("/version")
 async def version():
@@ -729,6 +729,9 @@ EDITOR_INJECT = """
 [data-eid]:hover{outline:1px solid rgba(167,140,70,.5);outline-offset:1px}
 [data-eid].ed-sel{outline:1px solid #A78C46;outline-offset:1px}
 [data-eid][contenteditable="true"]{cursor:text}
+/* Empty-state nudge: show a faint hint on any editable text box that's been left blank,
+   so a client knows there's something to fill in. Editor-only; never on the live site. */
+[data-eid]:empty::before{content:"Click to edit";color:#A78C46;opacity:.55;font-style:italic;font-size:.9em;pointer-events:none}
 img[data-eid]{cursor:grab}
 img[data-eid].ed-drag{opacity:.4}
 img[data-eid].ed-over{outline:2px solid #A78C46 !important;outline-offset:1px}
@@ -1533,6 +1536,37 @@ async def editor_page(slug_site: str, slug: str, u=Depends(current_user)):
     folder = rel.rsplit("/",1)[0] if "/" in rel else ""
     base = f"/api/asset/{slug_site}/{folder}/" if folder else f"/api/asset/{slug_site}/"
     return render_page(p, for_editor=True, asset_base=base)
+
+@api.get("/editor/preview/{slug_site}/{slug}", response_class=HTMLResponse)
+async def editor_preview(slug_site: str, slug: str, u=Depends(current_user)):
+    """Render the page EXACTLY as visitors will see it — no editor outlines/toolbars —
+    so a client can safely check their work before publishing. Read-only."""
+    if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed for this site")
+    p = await db.pages.find_one({"site":slug_site,"slug":slug})
+    if not p: raise HTTPException(404,"Page not found")
+    rel = (p.get("relpath") or "").replace("\\","/")
+    folder = rel.rsplit("/",1)[0] if "/" in rel else ""
+    base = f"/api/asset/{slug_site}/{folder}/" if folder else f"/api/asset/{slug_site}/"
+    return render_page(p, for_editor=False, asset_base=base)
+
+@api.post("/pages/{site}/{slug}/reset")
+async def reset_page(site: str, slug: str, u=Depends(current_user)):
+    """Discard this page's draft edits and put it back to the last version loaded from
+    the server (the source file on disk). A restore point + undo step are saved first,
+    so it is fully reversible. The LIVE site is not touched until the user publishes."""
+    if not scope_ok(u, site): raise HTTPException(403,"Not allowed to edit this site")
+    p = await db.pages.find_one({"site":site,"slug":slug})
+    if not p: raise HTTPException(404,"Page not found")
+    relpath = (p.get("relpath") or p.get("filename") or "").replace("\\","/")
+    src_file = os.path.join(SITES_DIR, site, relpath)
+    if not relpath or not os.path.isfile(src_file):
+        raise HTTPException(400, "This page has no saved server version to reset to (it was created in the editor). Use Undo instead.")
+    await create_snapshot(site, "pre-reset", f"Before resetting '{slug}'")
+    await push_undo(site, slug)
+    data = ingest_page(open(src_file, encoding="utf-8").read(), slug)
+    data["site"] = site; data["filename"] = os.path.basename(src_file); data["relpath"] = relpath
+    await db.pages.update_one({"site":site,"slug":slug}, {"$set": data})
+    return {"ok": True, "message": "Page reset to the last version from your server."}
 
 # serve site assets + uploaded media
 @api.get("/asset/{slug_site}/{path:path}")

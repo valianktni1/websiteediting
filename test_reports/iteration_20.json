@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend-only test of 6 new client-friendly editor UX features. All 6 features verified end-to-end using super-admin login + wifetobe site + home/about pages. No regressions detected.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (worked)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Editor UX features (coach overlay, status bar, preview, reset, softer publish wording) verified against wifetobe site. Editable text inside the iframe uses [data-eid][contenteditable] pattern (from EDITOR_INJECT in backend/server.py) — direct DOM-simulated text edit was not attempted; setJustSaved(true) fires on text save (App.js line 1524), so status-saved badge appears via the existing textSave handler. Reset endpoint POST /api/pages/{site}/{page}/reset works.",
+  "verified_features": {
+    "coach_overlay_first_open": {"visible": true, "tips_count": 3, "dismiss_button": true},
+    "coach_persistence": {"localStorage_key": "ivd_coach_seen", "value_after_dismiss": "1", "hidden_on_second_page_open": true},
+    "status_bar": {"visible": true, "clean_draft_wording": "You're editing a private draft. Nothing goes live until you press Publish."},
+    "preview_button": {"opens_new_tab": true, "url": "https://elementor-builder-4.preview.emergentagent.com/api/editor/preview/wifetobe/home?v=...", "html_length": 19169, "no_ed_tb_toolbar": true, "status_200": true},
+    "reset_page": {"confirm_dialog_shown": true, "dialog_accepted": true, "flash_message_seen": true, "endpoint_called": "POST /api/pages/wifetobe/home/reset"},
+    "publish_modal_wording": {"title": "Make your changes live", "correct": true, "cancelled_without_publishing": true},
+    "empty_state_hint": "CSS-only; editor renders normally, no breakage observed",
+    "regression": {"editor-back": true, "editor-seo": true, "editor-help": true, "editor-undo": true, "editor-publish-btn": true, "page-frame": true, "status-bar": true}
+  }
+}
