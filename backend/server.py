@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-13-cms-v21-soft-outline"
+BUILD_VERSION = "2026-06-14-cms-v22-pull-button"
 
 @api.get("/version")
 async def version():
