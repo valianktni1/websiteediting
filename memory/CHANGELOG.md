@@ -2,6 +2,24 @@
 
 ## 2026-06 (fork continuation)
 
+### Forced password change on first login (DONE, verified 100%) — cms-v27
+- New client users (created via Admin > Users, or whose password an admin resets) get
+  `must_change_password: true`. The seeded superadmin is created with the flag = false.
+- Backend: POST /api/auth/login returns `must_change_password`; a FastAPI middleware BLOCKS
+  every /api route with 403 `{code:"must_change_password"}` until the flag is cleared
+  (allowlist: login/logout/me/change-password/version/asset/branding). New endpoint
+  POST /api/auth/change-password verifies the current/temp password, enforces min 8 chars +
+  different-from-current, sets the new bcrypt hash, clears the flag, and rotates the cookie.
+  update_user re-sets the flag when an admin sets a new password. No new pip deps.
+- Frontend: AuthProvider exposes setUser + an axios interceptor that flips the flag on any
+  403 must_change_password; ForcePasswordChange screen (blocking, non-dismissible, reuses the
+  login card) with temp/new/confirm fields + client validation + "Sign out instead". Shell
+  renders it whenever user.must_change_password is true, so the dashboard is genuinely gated.
+- Verified: backend curl (create→login→403 gate→validations→success→re-login) + testing agent
+  frontend 9/9 (iteration_23.json): popup blocks dashboard, all validations fire, wrong temp pw
+  errors, success enters dashboard, re-login clean, admin never forced.
+
+
 ### Click-to-enlarge LIGHTBOX for galleries (DONE, verified 100%) — cms-v26
 - New `LIGHTBOX_INJECT` (server.py): self-contained CSS+JS, injected by `render_page` only on
   the LIVE/Preview render (`not for_editor` and page has an `<img>`). Guarded by
