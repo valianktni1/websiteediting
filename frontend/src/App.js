@@ -525,8 +525,9 @@ const SECTION_DESC = {
 };
 
 function SectionPicker({ onPick, onClose, busy }) {
-  const [items, setItems] = useState(null);
-  useEffect(() => { axios.get(`${API}/sections`).then(r => setItems(r.data)).catch(() => setItems([])); }, []);
+  const [data, setData] = useState(null);
+  useEffect(() => { axios.get(`${API}/sections`).then(r => setData(r.data)).catch(() => setData({ css: "", items: [] })); }, []);
+  const items = data?.items || null;
   return (
     <Modal title="Add a section" onClose={onClose}>
       <p className="hint">Pick a ready-made section — it drops in at the bottom of the page and adopts your theme colours &amp; fonts. Then click its text/images to edit. <b>Superadmin preview.</b></p>
@@ -535,6 +536,10 @@ function SectionPicker({ onPick, onClose, busy }) {
         {items && items.map(s => (
           <button key={s.key} className="section-card" data-testid={`section-${s.key}`} disabled={busy}
             onClick={() => onPick(s.key)}>
+            <div className="section-thumb-wrap">
+              <iframe title={s.label} className="section-thumb" tabIndex={-1} scrolling="no"
+                srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;overflow:hidden}${data.css}</style></head><body>${s.html}</body></html>`} />
+            </div>
             <div className="section-card-title">{s.label}</div>
             <div className="section-card-desc">{SECTION_DESC[s.key] || ""}</div>
           </button>

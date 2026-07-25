@@ -2,6 +2,13 @@
 
 ## 2026-06 (fork continuation)
 
+### Section picker live thumbnails (DONE) — cms-v30
+- The "Add section" picker now shows a real scaled-down live preview of each section (rendered
+  in a tiny sandboxed iframe from the section's own HTML + SECTIONS_CSS), so you see the layout
+  before inserting. GET /api/sections now returns {css, items:[{key,label,html}]}. Single-column
+  picker, centered 396px previews. Verified via screenshot (6 thumbnails render correctly:
+  CTA/split/features/banner/quote/heading). Insert/undo flow unchanged from cms-v29.
+
 ### Theme presets + "Add section" block library (DONE, verified 100%) — cms-v29
 - THEME PRESETS: Colours & Fonts panel now has a "Quick presets" row — Classic Elegant,
   Bold Modern, Warm Boutique, Fresh & Clean — each sets accent + heading/body font in one click.

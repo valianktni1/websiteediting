@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v29-sections-presets"
+BUILD_VERSION = "2026-06-14-cms-v30-section-thumbs"
 
 @api.get("/version")
 async def version():
@@ -1661,7 +1661,9 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
 
 @api.get("/sections")
 async def list_sections(u=Depends(require_super)):
-    return [{"key": k, "label": SECTION_LABELS[k]} for k in SECTION_KEYS]
+    inner = SECTIONS_CSS.replace("<style>", "").replace("</style>", "")
+    return {"css": inner,
+            "items": [{"key": k, "label": SECTION_LABELS[k], "html": section_html(k)} for k in SECTION_KEYS]}
 
 @api.post("/pages/{slug_site}/{slug}/add-section")
 async def add_section(slug_site: str, slug: str, body: AddSection, u=Depends(require_super)):
