@@ -2,6 +2,22 @@
 
 ## 2026-06 (fork continuation)
 
+### Click-to-enlarge LIGHTBOX for galleries (DONE, verified 100%) — cms-v26
+- New `LIGHTBOX_INJECT` (server.py): self-contained CSS+JS, injected by `render_page` only on
+  the LIVE/Preview render (`not for_editor` and page has an `<img>`). Guarded by
+  `window.self!==window.top` so it NEVER runs inside the CMS editor iframe (click-to-edit stays clean).
+- Behaviour: click any content photo → full-screen dark overlay with the enlarged image; prev/next
+  circular buttons + counter (N/M) for multi-image galleries; close via ×, Escape, or backdrop click;
+  swipe left/right on mobile. Galleries grouped by tightest ancestor containing 2+ eligible images
+  (so each car slider / photo grid navigates within itself).
+- SAFE by design: skips logos/icons/tiny (<110px) images, skips images inside real page links
+  (only intercepts image-file links), no new files, no SFTP/publish changes, editor untouched.
+- Testing: iteration_21 found 2 HIGH UX defects (full-height prev/next buttons covered the close
+  button + backdrop). Fixed → compact 56px vertically-centered circular nav buttons + close z-index:3.
+  Re-test iteration_22 = 100% (6/6): open/close/prev/next/counter/Escape/backdrop all work; editor
+  iframe confirmed lightbox-free.
+
+
 ### Lazy-load off-screen images site-wide (DONE, verified) — cms-v25
 - `render_page` (LIVE/Preview only, not editor): first image on the page stays eager (fast
   LCP/first paint); every other `<img>` gets `loading="lazy"` + `decoding="async"` unless it
