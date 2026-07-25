@@ -14,6 +14,10 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .login-card input:focus{ outline:none; border-color:var(--gold); }
 .login-card button{ margin-top:6px; background:var(--gold); color:#161616; border:none; padding:12px; border-radius:10px; font-weight:600; cursor:pointer; letter-spacing:.04em; text-transform:uppercase; font-size:.8rem; }
 .login-card button:disabled{ opacity:.6; }
+.login-card.force-pw{ width:400px; }
+.login-card .link-btn{ background:transparent; color:var(--muted); text-transform:none; letter-spacing:0; font-weight:500; padding:6px; font-size:.82rem; }
+.login-card .link-btn:hover{ color:var(--gold); }
+
 .err{ color:#ff8a8a; font-size:.85rem; }
 
 /* topbar */

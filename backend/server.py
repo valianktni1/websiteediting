@@ -12,7 +12,7 @@ from bson import ObjectId
 from bs4 import BeautifulSoup
 from bs4.element import Tag, NavigableString, Comment, Doctype, CData, ProcessingInstruction
 from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v26-lightbox"
+BUILD_VERSION = "2026-06-14-cms-v27-force-pw"
 
 @api.get("/version")
 async def version():
@@ -198,6 +198,10 @@ class UserUpdate(BaseModel):
     role: str | None = None
     site_id: str | None = None
     password: str = ""
+
+class ChangePassword(BaseModel):
+    current_password: str
+    new_password: str
 
 class SiteMeta(BaseModel):
     name: str | None = None
@@ -1105,7 +1109,8 @@ async def login(body: Login, response: Response):
     await db.login_attempts.delete_one({"email": email})
     tok = make_token(str(u["_id"]), u["email"], u.get("role","editor"))
     response.set_cookie("access_token", tok, httponly=True, secure=COOKIE_SECURE, samesite="lax", max_age=604800, path="/")
-    return {"id":str(u["_id"]),"email":u["email"],"name":u.get("name",""),"role":u.get("role"),"site_id":u.get("site_id")}
+    return {"id":str(u["_id"]),"email":u["email"],"name":u.get("name",""),"role":u.get("role"),
+            "site_id":u.get("site_id"),"must_change_password":bool(u.get("must_change_password"))}
 
 @api.post("/auth/logout")
 async def logout(response: Response, u=Depends(current_user)):
@@ -1113,7 +1118,26 @@ async def logout(response: Response, u=Depends(current_user)):
     return {"ok":True}
 
 @api.get("/auth/me")
-async def me(u=Depends(current_user)): return u
+async def me(u=Depends(current_user)):
+    u["must_change_password"] = bool(u.get("must_change_password"))
+    return u
+
+@api.post("/auth/change-password")
+async def change_password(body: ChangePassword, response: Response, u=Depends(current_user)):
+    doc = await db.users.find_one({"_id": ObjectId(u["id"])})
+    if not doc:
+        raise HTTPException(401, "User not found")
+    if not verify_pw(body.current_password, doc["password_hash"]):
+        raise HTTPException(400, "Your current password is incorrect.")
+    if len(body.new_password) < 8:
+        raise HTTPException(400, "New password must be at least 8 characters.")
+    if verify_pw(body.new_password, doc["password_hash"]):
+        raise HTTPException(400, "Please choose a new password that's different from the temporary one.")
+    await db.users.update_one({"_id": doc["_id"]},
+        {"$set": {"password_hash": hash_pw(body.new_password), "must_change_password": False}})
+    tok = make_token(u["id"], u["email"], u.get("role", "editor"))
+    response.set_cookie("access_token", tok, httponly=True, secure=COOKIE_SECURE, samesite="lax", max_age=604800, path="/")
+    return {"ok": True}
 
 @api.get("/users")
 async def list_users(u=Depends(require_admin)):
@@ -1127,7 +1151,8 @@ async def create_user(body: NewUser, u=Depends(require_admin)):
     if await db.users.find_one({"email":body.email.lower()}):
         raise HTTPException(400,"Email already exists")
     doc={"email":body.email.lower(),"password_hash":hash_pw(body.password),"name":body.name,
-         "role":body.role,"site_id":body.site_id,"created_at":datetime.now(timezone.utc).isoformat()}
+         "role":body.role,"site_id":body.site_id,"must_change_password":True,
+         "created_at":datetime.now(timezone.utc).isoformat()}
     r=await db.users.insert_one(doc)
     return {"id":str(r.inserted_id),"email":doc["email"],"role":doc["role"]}
 
@@ -2358,7 +2383,9 @@ async def update_user(uid: str, body: UserUpdate, u=Depends(require_admin)):
     if body.name is not None: upd["name"] = body.name
     if body.role is not None: upd["role"] = body.role
     if body.site_id is not None: upd["site_id"] = body.site_id or None
-    if body.password: upd["password_hash"] = hash_pw(body.password)
+    if body.password:
+        upd["password_hash"] = hash_pw(body.password)
+        upd["must_change_password"] = True  # admin-set password is temporary; user must change it
     if uid == u["id"] and body.role and body.role not in ("admin","superadmin"):
         raise HTTPException(400,"You cannot remove your own admin access")
     if upd: await db.users.update_one({"_id":ObjectId(uid)},{"$set":upd})
@@ -2680,6 +2707,37 @@ async def restore(slug: str, body: dict, u=Depends(require_admin)):
 
 app.include_router(api)
 
+# Force a temporary-password change before a user can use the app. A user flagged
+# must_change_password is allowed to hit ONLY login/logout/me/change-password (+ public
+# routes); every other /api call is blocked with 403 {code:"must_change_password"} until
+# they set a new password. Centralised here so no individual endpoint needs changing.
+_PWCHANGE_ALLOW = {"/api/auth/login", "/api/auth/logout", "/api/auth/me",
+                   "/api/auth/change-password", "/api/version"}
+_PWCHANGE_ALLOW_PREFIX = ("/api/asset/", "/api/branding")
+
+@app.middleware("http")
+async def _enforce_password_change(request, call_next):
+    path = request.url.path
+    if (request.method != "OPTIONS" and path.startswith("/api/")
+            and path not in _PWCHANGE_ALLOW
+            and not any(path.startswith(p) for p in _PWCHANGE_ALLOW_PREFIX)):
+        token = request.cookies.get("access_token")
+        if not token:
+            h = request.headers.get("Authorization", "")
+            if h.startswith("Bearer "):
+                token = h[7:]
+        if token:
+            try:
+                payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+                usr = await db.users.find_one({"_id": ObjectId(payload["sub"])})
+                if usr and usr.get("must_change_password"):
+                    return JSONResponse(status_code=403, content={
+                        "detail": "Please set a new password before continuing.",
+                        "code": "must_change_password"})
+            except Exception:
+                pass
+    return await call_next(request)
+
 @app.middleware("http")
 async def _noindex_header(request, call_next):
     resp = await call_next(request)
@@ -2708,7 +2766,8 @@ async def startup():
     ex = await db.users.find_one({"email": admin_email})
     if not ex:
         await db.users.insert_one({"email": admin_email, "password_hash": hash_pw(admin_pw),
-            "name": admin_name, "role": "superadmin", "site_id": None, "created_at": datetime.now(timezone.utc).isoformat()})
+            "name": admin_name, "role": "superadmin", "site_id": None, "must_change_password": False,
+            "created_at": datetime.now(timezone.utc).isoformat()})
     elif ex.get("role") != "superadmin":
         await db.users.update_one({"_id": ex["_id"]}, {"$set": {"role": "superadmin"}})
     # First-boot onboarding: ingest a site's HTML from disk ONCE. After that the DATABASE

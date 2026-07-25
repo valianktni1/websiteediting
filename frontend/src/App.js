@@ -49,12 +49,63 @@ function AuthProvider({ children }) {
   useEffect(() => {
     axios.get(`${API}/auth/me`).then(r => setUser(r.data)).catch(() => setUser(false)).finally(() => setLoading(false));
   }, []);
+  useEffect(() => {
+    const id = axios.interceptors.response.use(r => r, err => {
+      if (err.response?.status === 403 && err.response?.data?.code === "must_change_password") {
+        setUser(u => (u && typeof u === "object") ? { ...u, must_change_password: true } : u);
+      }
+      return Promise.reject(err);
+    });
+    return () => axios.interceptors.response.eject(id);
+  }, []);
   const login = async (email, password) => {
     const { data } = await axios.post(`${API}/auth/login`, { email, password });
     setUser(data); return data;
   };
   const logout = async () => { await axios.post(`${API}/auth/logout`); setUser(false); };
-  return <Auth.Provider value={{ user, loading, login, logout }}>{children}</Auth.Provider>;
+  return <Auth.Provider value={{ user, setUser, loading, login, logout }}>{children}</Auth.Provider>;
+}
+
+function ForcePasswordChange() {
+  const { user, setUser, logout } = useAuth();
+  const [cur, setCur] = useState(""); const [np, setNp] = useState(""); const [cp, setCp] = useState("");
+  const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault(); setErr("");
+    if (np.length < 8) { setErr("Your new password must be at least 8 characters."); return; }
+    if (np !== cp) { setErr("The two new passwords don't match."); return; }
+    if (np === cur) { setErr("Please choose a new password that's different from the temporary one."); return; }
+    setBusy(true);
+    try {
+      await axios.post(`${API}/auth/change-password`, { current_password: cur, new_password: np });
+      setUser(u => (u && typeof u === "object") ? { ...u, must_change_password: false } : u);
+    } catch (e) {
+      setErr(e.response?.data?.detail || "Something went wrong. Please try again.");
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="login-wrap">
+      <form className="login-card force-pw" onSubmit={submit} data-testid="force-pw-form">
+        <div className="brand">Set a new password</div>
+        <p className="sub">
+          Welcome{user?.name ? `, ${user.name}` : ""}! For your security you're using a
+          <b> temporary password</b>. Please choose your own password now — you won't be able to
+          access your site editor until you do.
+        </p>
+        <input data-testid="force-pw-current" type="password" placeholder="Temporary password"
+          value={cur} onChange={e => setCur(e.target.value)} autoComplete="current-password" />
+        <input data-testid="force-pw-new" type="password" placeholder="New password (min 8 characters)"
+          value={np} onChange={e => setNp(e.target.value)} autoComplete="new-password" />
+        <input data-testid="force-pw-confirm" type="password" placeholder="Confirm new password"
+          value={cp} onChange={e => setCp(e.target.value)} autoComplete="new-password" />
+        {err && <div className="err" data-testid="force-pw-error">{err}</div>}
+        <button data-testid="force-pw-submit" disabled={busy}>{busy ? "Saving…" : "Save new password & continue"}</button>
+        <button type="button" className="link-btn" data-testid="force-pw-logout"
+          onClick={logout} style={{ marginTop: 10 }}>Sign out instead</button>
+      </form>
+      <Footer />
+    </div>
+  );
 }
 
 function Footer() {
@@ -1698,6 +1749,7 @@ function Shell() {
   const { user, loading } = useAuth();
   if (loading) return <div className="center">Loading…</div>;
   if (!user) return <Login />;
+  if (user.must_change_password) return <ForcePasswordChange />;
   return <Dashboard />;
 }
 
