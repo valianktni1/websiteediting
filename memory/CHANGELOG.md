@@ -2,6 +2,27 @@
 
 ## 2026-06 (fork continuation)
 
+### Auto-hide unfinished/placeholder car cards on LIVE site (DONE, verified) — cms-v24
+- Problem: half-finished cars (title "Edit", price "£0000", "Edit" bullet points) from
+  the "+ Blank card / Add another car" flow leaked onto the published site
+  (seen live on broadfieldmotorco.co.uk/used-cars).
+- FIX 1 (public render only, `render_page` when `not for_editor`): any `[data-block]` card
+  that contains a price element is REMOVED from the live/Preview HTML if its title is
+  empty/"Edit"/"Make & Model"/"Coming soon" OR its price is empty/all-zeros (£0000, £0, £0.00).
+  Card is still visible in the EDITOR so the client can finish or delete it. Also strips any
+  leftover leaf `<li>/<p>/<span>` whose text is exactly "Edit" inside surviving cards.
+  Guards nested `data-block` (e.g. veh-cta buttons) via `card.attrs is None` + price-required
+  gate so Enquire/Call buttons on real cars are never touched.
+- FIX 2 (`add-blank-block` op): a new blank card no longer inherits the donor car's numbers —
+  price set to £0000, spec VALUES (`<dd>` spans, `.uc-spec b/span`) blanked to "–" (labels
+  Year/Mileage/... kept), title/strap/features already blanked to "Edit".
+- VERIFIED against the REAL live page fixture: 9 car cards → 7 kept (BMW Z4, CITROEN DS3, …),
+  exactly the 2 "Edit/£0000" placeholders removed, all real Enquire/Call buttons intact,
+  zero "£0000"/"<h3>Edit</h3>"/"<li>Edit</li>" left. add-blank clone: donor "2008" gone.
+- USER ACTION: rebuild Docker to cms-v24, open used-cars, Publish — the 2 broken cards
+  vanish from the live site automatically (they stay editable/deletable in the CMS).
+
+
 ### Clean URLs — sitemap enrichment (DONE, verified)
 - `_apply_clean_urls` in `server.py` now **preserves** the existing sitemap's
   `<lastmod>`/`<changefreq>`/`<priority>` tags, re-keyed to the new clean URLs

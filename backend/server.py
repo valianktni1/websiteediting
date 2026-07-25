@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v23-client-ux"
+BUILD_VERSION = "2026-06-14-cms-v24-hide-placeholders"
 
 @api.get("/version")
 async def version():
@@ -675,6 +675,34 @@ def render_page(page, for_editor=False, asset_base=""):
         if not for_editor and el.has_attr("data-eid"):
             del el["data-eid"]
     if not for_editor:
+        # SAFETY: never let unfinished/placeholder car cards leak onto the LIVE site.
+        # A card is a "car" if it has a price element or its data-block name mentions car/veh.
+        # It is a placeholder if its title is empty/"Edit"/"Make & Model"/"Coming soon"
+        # OR its price is empty / all-zeros (£0000, £0, £0.00 ...).
+        import re as _re
+        def _price_is_placeholder(txt):
+            digits = _re.sub(r"[^0-9]", "", txt or "")
+            return digits == "" or set(digits) == {"0"}
+        _PH_TITLES = {"", "edit", "make & model", "make and model", "coming soon"}
+        for card in list(bodyel.find_all(attrs={"data-block": True})):
+            if card.attrs is None:  # already decomposed with a parent card
+                continue
+            price_el = card.select_one('.veh-price,.uc-price,[class*="price"]')
+            if price_el is None:
+                continue
+            title_el = card.select_one(".veh-head h3,.uc-car-head h3,h1,h2,h3,h4")
+            title_txt = title_el.get_text(strip=True).lower() if title_el else ""
+            title_ph = title_txt in _PH_TITLES
+            price_ph = _price_is_placeholder(price_el.get_text())
+            if title_ph or price_ph:
+                card.decompose()
+        # strip leftover "Edit" placeholder bullets/text inside surviving cards
+        for card in bodyel.find_all(attrs={"data-block": True}):
+            for el in list(card.find_all(["li", "p", "span"])):
+                if el.find(True):
+                    continue
+                if el.get_text(strip=True).lower() == "edit":
+                    el.decompose()
         # drop Sold cars to the bottom of their grid so available stock shows first (live only)
         seen = set()
         for car in bodyel.find_all(attrs={"data-block": "car"}):
@@ -1296,6 +1324,18 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
             if not el.get_text(strip=True): continue
             if el.name in ("a","button"): continue
             el.clear(); el.append("Edit")
+        # blank price + spec VALUES so a new card never inherits the donor's numbers
+        for pr in clone.select('.veh-price,.uc-price'):
+            pr.clear(); pr.append("\u00a30000")
+        for pr in clone.select('[class*="price"]'):
+            if not pr.find(True):
+                pr.clear(); pr.append("\u00a30000")
+        for dd in clone.select('dd'):
+            leaf = dd.find(["span","b","strong"])
+            tgt = leaf if leaf is not None else dd
+            tgt.clear(); tgt.append("\u2013")
+        for sp in clone.select('.uc-spec b, .uc-spec span'):
+            sp.clear(); sp.append("\u2013")
         block.insert_after(clone)
     elif body.op == "add-blank-car":
         block = target.find_parent(attrs={"data-block": True})
