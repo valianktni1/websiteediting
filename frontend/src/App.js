@@ -522,6 +522,10 @@ const SECTION_DESC = {
   banner: "A full-width photo with a headline overlaid on top.",
   quote: "A centred customer testimonial / quote.",
   heading: "A simple centred heading + intro line to break up the page.",
+  faq: "Expandable questions & answers — tidy for common queries.",
+  pricing: "Three price/package cards with a button on each.",
+  logos: "A row of partner / brand logos to build trust.",
+  hours: "Opening hours list next to a map/location image.",
 };
 
 function SectionPicker({ onPick, onClose, busy }) {

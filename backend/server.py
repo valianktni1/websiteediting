@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v30-section-thumbs"
+BUILD_VERSION = "2026-06-14-cms-v31-more-sections"
 
 @api.get("/version")
 async def version():
@@ -833,10 +833,12 @@ def render_page(page, for_editor=False, asset_base="", branding=None):
 # (var(--brand-accent)/--brand-heading with safe fallbacks) so inserted stripes adopt the site's theme.
 # All text/images become editable regions after assign_regions runs. SECTIONS_CSS is injected once
 # per page whenever an ivds section is present (editor + preview + published).
-SECTION_KEYS = ["cta", "split", "features", "banner", "quote", "heading"]
+SECTION_KEYS = ["cta", "split", "features", "banner", "quote", "heading", "faq", "pricing", "logos", "hours"]
 SECTION_LABELS = {"cta": "Call-to-action strip", "split": "Text + image (2 columns)",
                   "features": "Three feature columns", "banner": "Image banner with overlay",
-                  "quote": "Testimonial / quote band", "heading": "Heading + intro band"}
+                  "quote": "Testimonial / quote band", "heading": "Heading + intro band",
+                  "faq": "FAQ accordion", "pricing": "Pricing / packages",
+                  "logos": "Logo / partner strip", "hours": "Opening hours + map"}
 _SECTIONS_RAW = {
 "cta": """<section class="ivds ivds-cta"><div class="ivds-wrap"><h2>Ready to get started?</h2><p>Add a short, punchy line here that encourages visitors to take the next step.</p><a class="ivds-btn" href="#">Get in touch</a></div></section>""",
 "split": """<section class="ivds ivds-split"><div class="ivds-wrap ivds-split-grid"><div class="ivds-split-text"><h2>A headline about your business</h2><p>Use this space to tell your story. Replace this text with a couple of sentences about what you offer and why customers choose you.</p><a class="ivds-btn" href="#">Learn more</a></div><div class="ivds-split-media"><img src="PLACEHOLDER_IMG" alt="Add an image"/></div></div></section>""",
@@ -844,6 +846,10 @@ _SECTIONS_RAW = {
 "banner": """<section class="ivds ivds-banner"><img class="ivds-banner-bg" src="PLACEHOLDER_IMG" alt=""/><div class="ivds-banner-inner"><h2>Big bold statement</h2><p>A supporting sentence sits underneath your headline.</p><a class="ivds-btn" href="#">Call to action</a></div></section>""",
 "quote": """<section class="ivds ivds-quote"><div class="ivds-wrap"><blockquote>Add a glowing customer testimonial here — it builds instant trust with new visitors.</blockquote><p class="ivds-quote-name">— Happy Customer</p></div></section>""",
 "heading": """<section class="ivds ivds-headingband"><div class="ivds-wrap"><h2>Section heading</h2><p>Introduce the section below with a sentence or two of context.</p></div></section>""",
+"faq": """<section class="ivds ivds-faq"><div class="ivds-wrap"><h2>Frequently asked questions</h2><details class="ivds-faq-item" data-block="faq" open><summary><h3>Your first question goes here?</h3></summary><p>Write a clear, helpful answer to the question here.</p></details><details class="ivds-faq-item" data-block="faq"><summary><h3>Your second question goes here?</h3></summary><p>Write a clear, helpful answer to the question here.</p></details><details class="ivds-faq-item" data-block="faq"><summary><h3>Your third question goes here?</h3></summary><p>Write a clear, helpful answer to the question here.</p></details></div></section>""",
+"pricing": """<section class="ivds ivds-pricing"><div class="ivds-wrap"><h2>Our packages</h2><div class="ivds-price-grid"><div class="ivds-price-card" data-block="package"><h3>Starter</h3><p class="ivds-price">£99</p><p>A short line about what's included in this package.</p><a class="ivds-btn" href="#">Choose</a></div><div class="ivds-price-card" data-block="package"><h3>Standard</h3><p class="ivds-price">£199</p><p>A short line about what's included in this package.</p><a class="ivds-btn" href="#">Choose</a></div><div class="ivds-price-card" data-block="package"><h3>Premium</h3><p class="ivds-price">£349</p><p>A short line about what's included in this package.</p><a class="ivds-btn" href="#">Choose</a></div></div></div></section>""",
+"logos": """<section class="ivds ivds-logos"><div class="ivds-wrap"><h2>Trusted by</h2><div class="ivds-logo-row"><img src="PLACEHOLDER_IMG" alt="Partner logo" data-block="logo"/><img src="PLACEHOLDER_IMG" alt="Partner logo" data-block="logo"/><img src="PLACEHOLDER_IMG" alt="Partner logo" data-block="logo"/><img src="PLACEHOLDER_IMG" alt="Partner logo" data-block="logo"/></div></div></section>""",
+"hours": """<section class="ivds ivds-hours"><div class="ivds-wrap ivds-hours-grid"><div class="ivds-hours-text"><h2>Opening hours</h2><ul class="ivds-hours-list"><li>Monday – Friday: 9:00am – 5:30pm</li><li>Saturday: 9:00am – 4:00pm</li><li>Sunday: Closed</li></ul><p>Find us at: 123 Example Street, Your Town, AB1 2CD</p></div><div class="ivds-hours-map"><img src="PLACEHOLDER_IMG" alt="Map of our location"/></div></div></section>""",
 }
 def section_html(key):
     return _SECTIONS_RAW[key].replace("PLACEHOLDER_IMG", BLANK_IMG)
@@ -871,7 +877,24 @@ SECTIONS_CSS = """<style>
 .ivds-quote blockquote{font-family:var(--brand-heading,inherit);font-size:1.6rem;font-style:italic;margin:0 auto 12px;max-width:800px}
 .ivds-quote-name{font-weight:600;color:#666}
 .ivds-headingband{text-align:center}
-@media(max-width:720px){.ivds{padding:44px 18px}.ivds-split-grid,.ivds-feature-grid{grid-template-columns:1fr}}
+.ivds-faq .ivds-wrap{max-width:820px}
+.ivds-faq-item{border:1px solid #eee;border-radius:10px;padding:14px 18px;margin:0 0 12px;background:#fafafa}
+.ivds-faq-item summary{cursor:pointer;list-style:none}
+.ivds-faq-item summary::-webkit-details-marker{display:none}
+.ivds-faq-item summary h3{display:inline;margin:0;font-size:1.05rem}
+.ivds-faq-item p{margin:12px 0 0}
+.ivds-pricing{text-align:center}
+.ivds-price-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.ivds-price-card{border:1px solid #eee;border-radius:14px;padding:28px 22px;background:#fff}
+.ivds-price{font-family:var(--brand-heading,inherit);font-size:2.2rem;font-weight:700;color:var(--brand-accent,#C82829);margin:6px 0 14px}
+.ivds-logos{text-align:center;background:#f7f7f9}
+.ivds-logo-row{display:flex;flex-wrap:wrap;gap:30px;align-items:center;justify-content:center}
+.ivds-logo-row img{height:60px;width:auto;max-width:180px;object-fit:contain}
+.ivds-hours-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
+.ivds-hours-list{list-style:none;padding:0;margin:0 0 16px}
+.ivds-hours-list li{padding:10px 0;border-bottom:1px solid #eee;font-size:1.05rem;color:#333}
+.ivds-hours-map img{width:100%;height:auto;border-radius:12px;display:block}
+@media(max-width:720px){.ivds{padding:44px 18px}.ivds-split-grid,.ivds-feature-grid,.ivds-price-grid,.ivds-hours-grid{grid-template-columns:1fr}}
 </style>"""
 
 BLANK_IMG = "data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'940'%20height%3D'705'%3E%3Crect%20width%3D'100%25'%20height%3D'100%25'%20fill%3D'%23e9ecf1'%2F%3E%3Ctext%20x%3D'50%25'%20y%3D'50%25'%20fill%3D'%239aa1ac'%20font-family%3D'Arial%2Csans-serif'%20font-size%3D'40'%20text-anchor%3D'middle'%20dominant-baseline%3D'middle'%3E%2B%20Add%20photo%3C%2Ftext%3E%3C%2Fsvg%3E"

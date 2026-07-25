@@ -2,6 +2,14 @@
 
 ## 2026-06 (fork continuation)
 
+### 4 more section types (DONE, verified) — cms-v31
+- Added FAQ accordion (CSS-only <details>/<summary>, editable Q via h3 + A via p), Pricing/packages
+  (3 cards Starter/Standard/Premium, editable price), Logo/partner strip (row of editable images),
+  Opening hours + map (editable hours list + address + map image placeholder). Section library now 10.
+- Same insert/edit/undo pipeline as cms-v29. Verified via curl: list=10; add faq/pricing/logos/hours
+  all render + SECTIONS_CSS + editable data-eids (faq h3, hours li); undo x4 reverts clean. Picker
+  thumbnails verified via screenshot (all 10 render correctly). wifetobe left clean.
+
 ### Section picker live thumbnails (DONE) — cms-v30
 - The "Add section" picker now shows a real scaled-down live preview of each section (rendered
   in a tiny sandboxed iframe from the section's own HTML + SECTIONS_CSS), so you see the layout
