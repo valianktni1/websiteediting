@@ -384,6 +384,119 @@ function NavMenuModal({ site, onClose, flash }) {
   );
 }
 
+const ACCENT_PRESETS = ["#C82829", "#E85D00", "#D4A24B", "#1F9D55", "#0EA5A4", "#2563EB", "#7C3AED", "#DB2777", "#111827"];
+
+function ThemeModal({ site, onClose, flash }) {
+  const [data, setData] = useState(null);
+  const [accent, setAccent] = useState("");
+  const [onAccent, setOnAccent] = useState("#ffffff");
+  const [heading, setHeading] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    axios.get(`${API}/sites/${site}/theme`).then(r => {
+      setData(r.data);
+      setAccent(r.data.accent || "");
+      setOnAccent(r.data.on_accent || "#ffffff");
+      setHeading(r.data.heading_font || "");
+      setBody(r.data.body_font || "");
+    }).catch(() => setErr("Couldn't load the theme."));
+  }, [site]);
+  // load the chosen Google fonts so the preview renders in the real typeface
+  useEffect(() => {
+    const fams = [heading, body].filter(Boolean).map(f => `family=${f.replace(/ /g, "+")}:wght@400;500;600;700`);
+    if (!fams.length) return;
+    const l = document.createElement("link");
+    l.rel = "stylesheet";
+    l.href = `https://fonts.googleapis.com/css2?${fams.join("&")}&display=swap`;
+    document.head.appendChild(l);
+    return () => { document.head.removeChild(l); };
+  }, [heading, body]);
+  const save = async (clear) => {
+    setErr(""); setBusy(true);
+    const payload = clear
+      ? { accent: "", accent_dark: "", on_accent: "", heading_font: "", body_font: "" }
+      : { accent, accent_dark: accent, on_accent: onAccent, heading_font: heading, body_font: body };
+    try {
+      await axios.put(`${API}/sites/${site}/theme`, payload);
+      flash && flash(clear ? "Theme reset to the site's original look" : "Theme saved — open a page or hit Preview to see it");
+      onClose();
+    } catch (e) {
+      setErr(e.response?.data?.detail || "Couldn't save the theme.");
+    } finally { setBusy(false); }
+  };
+  const fonts = data?.fonts || [];
+  return (
+    <Modal title="Colours & Fonts" onClose={onClose}>
+      <div className="theme-panel" data-testid="theme-panel">
+        <p className="hint">Change your whole site's look in one place. Nothing goes live until you <b>Publish</b>.</p>
+
+        <label className="modal-label">Accent colour</label>
+        <div className="theme-color-row">
+          <input type="color" data-testid="theme-accent-color" value={/^#([0-9a-fA-F]{6})$/.test(accent) ? accent : "#C82829"}
+            onChange={e => setAccent(e.target.value)} />
+          <input className="modal-input" data-testid="theme-accent-hex" placeholder="#C82829" value={accent}
+            onChange={e => setAccent(e.target.value)} style={{ maxWidth: 130 }} />
+          <div className="theme-swatches">
+            {ACCENT_PRESETS.map(c => (
+              <button key={c} type="button" className="theme-swatch" data-testid={`theme-swatch-${c.replace("#", "")}`}
+                title={c} style={{ background: c }} onClick={() => setAccent(c)} />
+            ))}
+          </div>
+        </div>
+
+        <label className="modal-label">Button text colour</label>
+        <div className="theme-color-row">
+          <input type="color" data-testid="theme-onaccent-color" value={/^#([0-9a-fA-F]{6})$/.test(onAccent) ? onAccent : "#ffffff"}
+            onChange={e => setOnAccent(e.target.value)} />
+          <button type="button" className="btn ghost" onClick={() => setOnAccent("#ffffff")}>White</button>
+          <button type="button" className="btn ghost" onClick={() => setOnAccent("#111111")}>Dark</button>
+        </div>
+
+        <div className="theme-font-grid">
+          <div>
+            <label className="modal-label">Heading font</label>
+            <select className="modal-input" data-testid="theme-heading-font" value={heading} onChange={e => setHeading(e.target.value)}>
+              <option value="">— Site default —</option>
+              {fonts.map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="modal-label">Body font</label>
+            <select className="modal-input" data-testid="theme-body-font" value={body} onChange={e => setBody(e.target.value)}>
+              <option value="">— Site default —</option>
+              {fonts.map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="theme-preview" data-testid="theme-preview">
+          <div className="theme-preview-label">Live preview</div>
+          <h3 style={{ fontFamily: heading ? `'${heading}', serif` : undefined, margin: "4px 0 6px" }}>The quick brown fox</h3>
+          <p style={{ fontFamily: body ? `'${body}', sans-serif` : undefined, margin: "0 0 12px", color: "#444" }}>
+            Jumps over the lazy dog — this is how your body text will look on the site.
+          </p>
+          <a href="#" onClick={e => e.preventDefault()} style={{ color: accent || "#C82829", fontFamily: body ? `'${body}', sans-serif` : undefined }}>An example link</a>
+          <div style={{ marginTop: 12 }}>
+            <span style={{ display: "inline-block", background: accent || "#C82829", color: onAccent || "#fff",
+              padding: "10px 18px", borderRadius: 8, fontWeight: 600, fontFamily: body ? `'${body}', sans-serif` : undefined }}>
+              Example button
+            </span>
+          </div>
+        </div>
+
+        {err && <div className="err" data-testid="theme-error">{err}</div>}
+        <div className="modal-actions">
+          <button className="btn ghost" data-testid="theme-reset" disabled={busy} onClick={() => save(true)}>Reset to default</button>
+          <button className="btn primary" data-testid="theme-save" disabled={busy || !data} onClick={() => save(false)}>{busy ? "Saving…" : "Save theme"}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+
 
 function HelpModal({ onClose }) {
   return (
@@ -1352,6 +1465,7 @@ function Dashboard() {
             <div className="actions">
               <button className="btn" data-testid="add-page-btn" onClick={() => setModal("addpage")}>+ New page</button>
               <button className="btn" data-testid="find-replace-btn" onClick={() => setModal("replace")}>Find &amp; Replace</button>
+              <button className="btn" data-testid="theme-btn" onClick={() => setModal("theme")}>Colours &amp; Fonts</button>
               <button className="btn" data-testid="version-history-btn" onClick={() => setModal("versions")}>Restore points</button>
               {isAdmin && <button className="btn" data-testid="publish-history-btn" onClick={() => setModal("pubhistory")}>Publish history</button>}
               <button className="btn" data-testid="preview-btn" onClick={preview}>Preview</button>
@@ -1387,6 +1501,7 @@ function Dashboard() {
       </div>
       {modal === "addpage" && site && <AddPageModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => { setModal(null); loadSites(site.slug); }} />}
       {modal === "replace" && site && <FindReplaceModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => loadSites(site.slug)} />}
+      {modal === "theme" && site && <ThemeModal site={site.slug} flash={flash} onClose={() => setModal(null)} />}
       {modal === "help" && <HelpModal onClose={() => setModal(null)} />}
       {modal === "versions" && site && <VersionHistory site={site.slug} flash={flash} onClose={() => setModal(null)} onRestored={() => loadSites(site.slug)} />}
       {modal === "admin" && <AdminSettings user={user} flash={flash} onClose={() => setModal(null)} onSitesChanged={() => loadSites()} />}

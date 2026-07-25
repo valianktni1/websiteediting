@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v27-force-pw"
+BUILD_VERSION = "2026-06-14-cms-v28-theme"
 
 @api.get("/version")
 async def version():
@@ -179,6 +179,13 @@ class Branding(BaseModel):
     heading_font: str = ""
     body_font: str = ""
     font_link: str = ""
+
+class ThemeIn(BaseModel):
+    accent: str = ""
+    accent_dark: str = ""
+    on_accent: str = ""
+    heading_font: str = ""
+    body_font: str = ""
 
 class TemplateIn(BaseModel):
     name: str
@@ -534,6 +541,68 @@ def _brand_root_style(branding):
     if not lines: return ""
     return "<style>:root{" + "".join(lines) + "}</style>"
 
+# ~30 curated Google Fonts (fast, well-supported, no licensing worries) offered in the Theme panel.
+CURATED_FONTS = [
+    "Inter", "Poppins", "Montserrat", "Roboto", "Open Sans", "Lato", "Raleway", "Work Sans",
+    "Nunito", "Manrope", "DM Sans", "Sora", "Space Grotesk", "Rubik", "Karla", "Mulish",
+    "Figtree", "Outfit", "Archivo", "Josefin Sans", "Quicksand",
+    "Playfair Display", "Merriweather", "Lora", "Cormorant Garamond", "EB Garamond",
+    "PT Serif", "Libre Baskerville", "Oswald", "Bebas Neue",
+]
+_HEX_RE = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+def _valid_hex(c): return bool(c) and bool(_HEX_RE.match(c.strip()))
+
+def _google_fonts_link(heading, body):
+    fams = []
+    for f in (heading, body):
+        f = (f or "").strip()
+        if f and f in CURATED_FONTS and f not in fams:
+            fams.append(f)
+    if not fams: return ""
+    parts = [f"family={f.replace(' ', '+')}:wght@400;500;600;700" for f in fams]
+    return ('<link rel="preconnect" href="https://fonts.googleapis.com">'
+            '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+            '<link href="https://fonts.googleapis.com/css2?' + "&".join(parts) + '&display=swap" rel="stylesheet">')
+
+def _theme_style(branding):
+    """Site-wide Theme override: accent colour + heading/body font. Injected AFTER the site's own
+    CSS (with !important + common CSS-variable remaps) so it repaints hand-coded sites ~90%+.
+    Buttons target .btn/.cta/[type=submit] (NOT bare <button>) so sliders/icon buttons are left alone."""
+    b = branding or {}
+    accent = (b.get("accent") or "").strip()
+    if accent and not _valid_hex(accent): accent = ""
+    adark = (b.get("accent_dark") or "").strip()
+    if not _valid_hex(adark): adark = accent
+    onacc = (b.get("on_accent") or "").strip()
+    if not _valid_hex(onacc): onacc = "#ffffff"
+    head = (b.get("heading_font") or "").strip()
+    if head not in CURATED_FONTS: head = ""
+    bodyf = (b.get("body_font") or "").strip()
+    if bodyf not in CURATED_FONTS: bodyf = ""
+    if not (accent or head or bodyf): return ""
+    root = []
+    if accent:
+        root += [f"--brand-accent:{accent};", f"--brand-accent-dark:{adark};", f"--brand-on-accent:{onacc};",
+                 f"--accent:{accent};", f"--accent-color:{accent};", f"--primary:{accent};",
+                 f"--color-primary:{accent};", f"--gold:{accent};", f"--brand:{accent};",
+                 f"--brand-color:{accent};", f"--theme:{accent};", f"--main-color:{accent};"]
+    if head: root.append(f"--brand-heading:'{head}',Georgia,serif;")
+    if bodyf: root.append(f"--brand-body:'{bodyf}',system-ui,sans-serif;")
+    css = ":root{" + "".join(root) + "}"
+    if bodyf:
+        css += ("body,p,li,a,button,input,textarea,select,blockquote,label,figcaption,td,th,dd,dt"
+                "{font-family:'" + bodyf + "',system-ui,sans-serif !important}")
+    if head:
+        css += ("h1,h2,h3,h4,h5,h6,h1 *,h2 *,h3 *,h4 *,h5 *,h6 *,[class*=\"title\"],[class*=\"heading\"]"
+                "{font-family:'" + head + "',Georgia,serif !important}")
+    if accent:
+        css += ("a:not(header a):not(nav a):not(footer a):not([class*=\"btn\"]):not([class*=\"button\"])"
+                "{color:" + accent + " !important}")
+        css += (".btn,a.btn,[class*=\"cta\"],button[type=\"submit\"],input[type=\"submit\"],input[type=\"button\"]"
+                "{background-color:" + accent + " !important;border-color:" + accent + " !important;color:" + onacc + " !important}")
+        css += ("::selection{background:" + accent + ";color:" + onacc + "}")
+    return _google_fonts_link(head, bodyf) + "<style>" + css + "</style>"
+
 def _chrome_from_home(home_template):
     """Pull the site's header + footer markup so a template page looks native."""
     soup = BeautifulSoup(home_template, "lxml")
@@ -647,7 +716,7 @@ async def push_undo(site, slug):
         if i > 50: await db.edit_history.delete_one({"_id": d["_id"]})
 
 # ---------------- render ----------------
-def render_page(page, for_editor=False, asset_base=""):
+def render_page(page, for_editor=False, asset_base="", branding=None):
     template = page["template"]
     soup = BeautifulSoup(template, "lxml")
     bodyel = soup.body or soup
@@ -741,6 +810,7 @@ def render_page(page, for_editor=False, asset_base=""):
     head += "\n" + "\n".join(seo.get("jsonld",[]))
     head += "\n" + "\n".join(page.get("head_assets",[]))
     head += '\n<style>.ivd-caption{display:block;text-align:center;font-size:.85rem;color:#666;margin:.4rem auto 1rem;font-style:italic;max-width:90%;}</style>'
+    theme_assets = _theme_style(branding)
     base = f'<base href="{asset_base}">' if asset_base else ""
     editor_assets = EDITOR_INJECT if for_editor else ""
     finance_assets = FINANCE_INJECT if (not for_editor and 'data-block="car"' in inner) else ""
@@ -750,6 +820,7 @@ def render_page(page, for_editor=False, asset_base=""):
 <meta name="viewport" content="width=device-width, initial-scale=1">{base}
 {head}
 {status_assets}
+{theme_assets}
 {editor_assets}</head><body>{inner}{finance_assets}{lightbox_assets}</body></html>"""
 
 BLANK_IMG = "data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'940'%20height%3D'705'%3E%3Crect%20width%3D'100%25'%20height%3D'100%25'%20fill%3D'%23e9ecf1'%2F%3E%3Ctext%20x%3D'50%25'%20y%3D'50%25'%20fill%3D'%239aa1ac'%20font-family%3D'Arial%2Csans-serif'%20font-size%3D'40'%20text-anchor%3D'middle'%20dominant-baseline%3D'middle'%3E%2B%20Add%20photo%3C%2Ftext%3E%3C%2Fsvg%3E"
@@ -1673,6 +1744,34 @@ async def set_branding(slug: str, body: Branding, u=Depends(require_admin)):
         "subdomain": sub}})
     return {"ok":True}
 
+@api.get("/sites/{slug}/theme")
+async def get_theme(slug: str, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403, "Not allowed for this site")
+    s = await db.sites.find_one({"slug": slug})
+    if not s: raise HTTPException(404, "Site not found")
+    b = s.get("branding") or {}
+    return {"accent": b.get("accent", ""), "accent_dark": b.get("accent_dark", ""),
+            "on_accent": b.get("on_accent", ""), "heading_font": b.get("heading_font", ""),
+            "body_font": b.get("body_font", ""), "fonts": CURATED_FONTS}
+
+@api.put("/sites/{slug}/theme")
+async def set_theme(slug: str, body: ThemeIn, u=Depends(current_user)):
+    if not scope_ok(u, slug): raise HTTPException(403, "Not allowed for this site")
+    s = await db.sites.find_one({"slug": slug})
+    if not s: raise HTTPException(404, "Site not found")
+    accent = body.accent.strip(); adark = body.accent_dark.strip(); onacc = body.on_accent.strip()
+    hf = body.heading_font.strip(); bf = body.body_font.strip()
+    if accent and not _valid_hex(accent): raise HTTPException(400, "Accent colour must be a hex value like #C82829.")
+    if adark and not _valid_hex(adark): raise HTTPException(400, "Invalid hover colour.")
+    if onacc and not _valid_hex(onacc): raise HTTPException(400, "Invalid button-text colour.")
+    if hf and hf not in CURATED_FONTS: raise HTTPException(400, "Please choose a heading font from the list.")
+    if bf and bf not in CURATED_FONTS: raise HTTPException(400, "Please choose a body font from the list.")
+    b = dict(s.get("branding") or {})
+    b.update({"accent": accent, "accent_dark": adark, "on_accent": onacc,
+              "heading_font": hf, "body_font": bf, "font_link": _google_fonts_link(hf, bf)})
+    await db.sites.update_one({"slug": slug}, {"$set": {"branding": b}})
+    return {"ok": True}
+
 @api.delete("/sites/{slug}")
 async def remove_site(slug: str, u=Depends(require_super)):
     s = await db.sites.find_one({"slug":slug})
@@ -1697,7 +1796,8 @@ async def editor_page(slug_site: str, slug: str, u=Depends(current_user)):
     rel = (p.get("relpath") or "").replace("\\","/")
     folder = rel.rsplit("/",1)[0] if "/" in rel else ""
     base = f"/api/asset/{slug_site}/{folder}/" if folder else f"/api/asset/{slug_site}/"
-    return render_page(p, for_editor=True, asset_base=base)
+    s = await db.sites.find_one({"slug": slug_site})
+    return render_page(p, for_editor=True, asset_base=base, branding=(s or {}).get("branding"))
 
 @api.get("/editor/preview/{slug_site}/{slug}", response_class=HTMLResponse)
 async def editor_preview(slug_site: str, slug: str, u=Depends(current_user)):
@@ -1709,7 +1809,8 @@ async def editor_preview(slug_site: str, slug: str, u=Depends(current_user)):
     rel = (p.get("relpath") or "").replace("\\","/")
     folder = rel.rsplit("/",1)[0] if "/" in rel else ""
     base = f"/api/asset/{slug_site}/{folder}/" if folder else f"/api/asset/{slug_site}/"
-    return render_page(p, for_editor=False, asset_base=base)
+    s = await db.sites.find_one({"slug": slug_site})
+    return render_page(p, for_editor=False, asset_base=base, branding=(s or {}).get("branding"))
 
 @api.post("/pages/{site}/{slug}/reset")
 async def reset_page(site: str, slug: str, u=Depends(current_user)):
@@ -1924,7 +2025,7 @@ def build_dist(site_slug, pages, src_dir, site=None):
         for f in os.listdir(md): shutil.copy(os.path.join(md,f), os.path.join(dst,f))
     # render pages back to their own relative path (subfolders preserved)
     for p in pages:
-        html = render_page(p, for_editor=False, asset_base="")
+        html = render_page(p, for_editor=False, asset_base="", branding=(site or {}).get("branding"))
         rel = _page_relpath(p)
         dest = os.path.join(out, rel)
         os.makedirs(os.path.dirname(dest) or out, exist_ok=True)

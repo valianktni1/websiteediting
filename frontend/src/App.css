@@ -17,6 +17,17 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .login-card.force-pw{ width:400px; }
 .login-card .link-btn{ background:transparent; color:var(--muted); text-transform:none; letter-spacing:0; font-weight:500; padding:6px; font-size:.82rem; }
 .login-card .link-btn:hover{ color:var(--gold); }
+.theme-panel .modal-label{ display:block; margin:14px 0 6px; font-size:.82rem; color:var(--muted); font-weight:600; }
+.theme-color-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.theme-color-row input[type="color"]{ width:44px; height:36px; padding:0; border:1px solid var(--line); border-radius:8px; background:none; cursor:pointer; }
+.theme-swatches{ display:flex; gap:6px; flex-wrap:wrap; margin-left:auto; }
+.theme-swatch{ width:24px; height:24px; border-radius:6px; border:2px solid rgba(255,255,255,.15); cursor:pointer; padding:0; }
+.theme-swatch:hover{ transform:scale(1.12); transition:transform .12s; }
+.theme-font-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.theme-preview{ margin-top:18px; padding:18px; border:1px solid var(--line); border-radius:12px; background:#fff; color:#111; }
+.theme-preview-label{ font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#999; margin-bottom:8px; }
+.theme-preview h3{ font-size:1.5rem; }
+
 
 .err{ color:#ff8a8a; font-size:.85rem; }
 
