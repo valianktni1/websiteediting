@@ -2,6 +2,24 @@
 
 ## 2026-06 (fork continuation)
 
+### Theme presets + "Add section" block library (DONE, verified 100%) — cms-v29
+- THEME PRESETS: Colours & Fonts panel now has a "Quick presets" row — Classic Elegant,
+  Bold Modern, Warm Boutique, Fresh & Clean — each sets accent + heading/body font in one click.
+- ADD SECTION (SUPERADMIN-ONLY, experimental): '+ Add section' button in the editor topbar
+  (shown only when user.role === 'superadmin'). Opens a picker of 6 drop-in sections: CTA strip,
+  text+image split, three feature columns, image banner, testimonial/quote band, heading+intro.
+  Backend: GET /api/sections + POST /api/pages/{site}/{slug}/add-section (both require_super).
+  Insert bakes existing region edits, appends the section to <main>/<body>, re-runs assign_regions
+  so all text/images become editable, and snapshots+undo like normal ops. Sections use namespaced
+  ivds- classes + var(--brand-accent)/--brand-heading (with fallbacks) so they adopt the site theme;
+  SECTIONS_CSS injected once per page when an ivds section is present (editor+preview+published).
+- Verified: backend curl (list 6, add CTA -> ivds-cta + SECTIONS_CSS + editable data-eid, undo
+  reverts) + testing agent frontend 100% (iteration_25.json): presets update preview+save, picker
+  inserts + editable + undo, superadmin gating. wifetobe left clean.
+- NOTE: sections currently insert at the END of the page. Positioning ("insert after selected
+  block") + exposing to clients are the natural phase-2 follow-ups.
+
+
 ### Site-wide Theme panel: Colours & Fonts (DONE, verified 100%) — cms-v28
 - New "Colours & Fonts" button on the dashboard (available to admins AND the site's own editor
   clients). Opens a Theme panel: accent colour picker + hex + 9 preset swatches, button-text
