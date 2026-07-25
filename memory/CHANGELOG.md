@@ -2,6 +2,26 @@
 
 ## 2026-06 (fork continuation)
 
+### Site-wide Theme panel: Colours & Fonts (DONE, verified 100%) — cms-v28
+- New "Colours & Fonts" button on the dashboard (available to admins AND the site's own editor
+  clients). Opens a Theme panel: accent colour picker + hex + 9 preset swatches, button-text
+  colour, heading font + body font dropdowns (~30 curated Google Fonts), and a live preview.
+- Backend: GET/PUT /api/sites/{slug}/theme (scope_ok, so clients can self-serve). Values stored
+  in site.branding (accent/accent_dark/on_accent/heading_font/body_font/font_link). Hex validated
+  server-side (prevents CSS injection); fonts must be in CURATED_FONTS. _theme_style(branding)
+  builds injected CSS: :root remaps common accent var names (--accent/--primary/--gold/etc.) so
+  var()-based sites repaint free, plus !important font overrides (headings vs body) and accent
+  rules for links + .btn/.cta/[type=submit] (bare <button>/sliders left alone). _google_fonts_link
+  builds the <link>. render_page now takes `branding` and injects the theme AFTER the site's own
+  CSS; wired through editor_page, editor_preview and build_dist (shows in editor canvas + Preview
+  + published). ~90% repaint of hand-coded sites as agreed with the user.
+- Verified: backend curl (GET 30 fonts, PUT save, invalid hex 400, render injects accent var +
+  Playfair/Manrope + Google Fonts link + button rule) and testing agent frontend 100%
+  (iteration_24.json): panel opens, swatch/hex/fonts/live-preview/save/persistence/invalid-hex/
+  reset all pass; render injection cross-verified; wifetobe reset after test.
+- BACKLOG (phase 2, user wants eventually): per-element colour/font control in the editor.
+
+
 ### Forced password change on first login (DONE, verified 100%) — cms-v27
 - New client users (created via Admin > Users, or whose password an admin resets) get
   `must_change_password: true`. The seeded superadmin is created with the flag = false.
