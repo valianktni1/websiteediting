@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v28-theme"
+BUILD_VERSION = "2026-06-14-cms-v29-sections-presets"
 
 @api.get("/version")
 async def version():
@@ -144,6 +144,9 @@ class PageOp(BaseModel):
     ref: str | None = None
     kind: str | None = None
     url: str | None = None
+class AddSection(BaseModel):
+    key: str
+    eid: str = ""
 class AltSuggest(BaseModel):
     eid: str
 class CaptionUpdate(BaseModel):
@@ -816,12 +819,60 @@ def render_page(page, for_editor=False, asset_base="", branding=None):
     finance_assets = FINANCE_INJECT if (not for_editor and 'data-block="car"' in inner) else ""
     status_assets = STATUS_CSS if 'data-block=' in inner else ""
     lightbox_assets = LIGHTBOX_INJECT if (not for_editor and '<img' in inner) else ""
+    sections_assets = SECTIONS_CSS if 'ivds' in inner else ""
     return f"""<!DOCTYPE html><html lang="en-GB"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">{base}
 {head}
 {status_assets}
+{sections_assets}
 {theme_assets}
 {editor_assets}</head><body>{inner}{finance_assets}{lightbox_assets}</body></html>"""
+
+
+# ---- Drop-in SECTION library (superadmin "Add section"). Namespaced ivds- classes, theme-tokenised
+# (var(--brand-accent)/--brand-heading with safe fallbacks) so inserted stripes adopt the site's theme.
+# All text/images become editable regions after assign_regions runs. SECTIONS_CSS is injected once
+# per page whenever an ivds section is present (editor + preview + published).
+SECTION_KEYS = ["cta", "split", "features", "banner", "quote", "heading"]
+SECTION_LABELS = {"cta": "Call-to-action strip", "split": "Text + image (2 columns)",
+                  "features": "Three feature columns", "banner": "Image banner with overlay",
+                  "quote": "Testimonial / quote band", "heading": "Heading + intro band"}
+_SECTIONS_RAW = {
+"cta": """<section class="ivds ivds-cta"><div class="ivds-wrap"><h2>Ready to get started?</h2><p>Add a short, punchy line here that encourages visitors to take the next step.</p><a class="ivds-btn" href="#">Get in touch</a></div></section>""",
+"split": """<section class="ivds ivds-split"><div class="ivds-wrap ivds-split-grid"><div class="ivds-split-text"><h2>A headline about your business</h2><p>Use this space to tell your story. Replace this text with a couple of sentences about what you offer and why customers choose you.</p><a class="ivds-btn" href="#">Learn more</a></div><div class="ivds-split-media"><img src="PLACEHOLDER_IMG" alt="Add an image"/></div></div></section>""",
+"features": """<section class="ivds ivds-features"><div class="ivds-wrap"><h2>What we offer</h2><div class="ivds-feature-grid"><div class="ivds-feature" data-block="feature"><h3>First feature</h3><p>A short description of this feature or service goes here.</p></div><div class="ivds-feature" data-block="feature"><h3>Second feature</h3><p>A short description of this feature or service goes here.</p></div><div class="ivds-feature" data-block="feature"><h3>Third feature</h3><p>A short description of this feature or service goes here.</p></div></div></div></section>""",
+"banner": """<section class="ivds ivds-banner"><img class="ivds-banner-bg" src="PLACEHOLDER_IMG" alt=""/><div class="ivds-banner-inner"><h2>Big bold statement</h2><p>A supporting sentence sits underneath your headline.</p><a class="ivds-btn" href="#">Call to action</a></div></section>""",
+"quote": """<section class="ivds ivds-quote"><div class="ivds-wrap"><blockquote>Add a glowing customer testimonial here — it builds instant trust with new visitors.</blockquote><p class="ivds-quote-name">— Happy Customer</p></div></section>""",
+"heading": """<section class="ivds ivds-headingband"><div class="ivds-wrap"><h2>Section heading</h2><p>Introduce the section below with a sentence or two of context.</p></div></section>""",
+}
+def section_html(key):
+    return _SECTIONS_RAW[key].replace("PLACEHOLDER_IMG", BLANK_IMG)
+
+SECTIONS_CSS = """<style>
+.ivds{padding:64px 20px;font-family:var(--brand-body,inherit)}
+.ivds .ivds-wrap{max-width:1100px;margin:0 auto}
+.ivds h2{font-family:var(--brand-heading,inherit);font-size:2rem;line-height:1.15;margin:0 0 14px}
+.ivds h3{font-family:var(--brand-heading,inherit);font-size:1.2rem;margin:0 0 8px}
+.ivds p{font-size:1.05rem;line-height:1.6;color:#444;margin:0 0 16px}
+.ivds .ivds-btn{display:inline-block;background:var(--brand-accent,#C82829);color:var(--brand-on-accent,#fff);padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600}
+.ivds-cta{background:var(--brand-accent,#C82829);text-align:center}
+.ivds-cta h2,.ivds-cta p{color:#fff}
+.ivds-cta .ivds-btn{background:#fff;color:var(--brand-accent,#C82829)}
+.ivds-split-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
+.ivds-split-media img{width:100%;height:auto;border-radius:12px;display:block}
+.ivds-features{text-align:center}
+.ivds-feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;text-align:left}
+.ivds-feature{padding:24px;border:1px solid #eee;border-radius:12px;background:#fafafa}
+.ivds-banner{position:relative;padding:0;min-height:360px;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden}
+.ivds-banner-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ivds-banner-inner{position:relative;z-index:2;padding:40px;background:rgba(0,0,0,.45);color:#fff;border-radius:12px;max-width:640px}
+.ivds-banner-inner h2,.ivds-banner-inner p{color:#fff}
+.ivds-quote{text-align:center;background:#f7f7f9}
+.ivds-quote blockquote{font-family:var(--brand-heading,inherit);font-size:1.6rem;font-style:italic;margin:0 auto 12px;max-width:800px}
+.ivds-quote-name{font-weight:600;color:#666}
+.ivds-headingband{text-align:center}
+@media(max-width:720px){.ivds{padding:44px 18px}.ivds-split-grid,.ivds-feature-grid{grid-template-columns:1fr}}
+</style>"""
 
 BLANK_IMG = "data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'940'%20height%3D'705'%3E%3Crect%20width%3D'100%25'%20height%3D'100%25'%20fill%3D'%23e9ecf1'%2F%3E%3Ctext%20x%3D'50%25'%20y%3D'50%25'%20fill%3D'%239aa1ac'%20font-family%3D'Arial%2Csans-serif'%20font-size%3D'40'%20text-anchor%3D'middle'%20dominant-baseline%3D'middle'%3E%2B%20Add%20photo%3C%2Ftext%3E%3C%2Fsvg%3E"
 from assets_data import COMING_SOON_IMG
@@ -1608,7 +1659,44 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
     await db.pages.update_one({"_id":p["_id"]},{"$set":{"template":str(bodyel),"regions":regions}})
     return {"ok":True}
 
-@api.post("/pages/{slug_site}/{slug}/bulk-image")
+@api.get("/sections")
+async def list_sections(u=Depends(require_super)):
+    return [{"key": k, "label": SECTION_LABELS[k]} for k in SECTION_KEYS]
+
+@api.post("/pages/{slug_site}/{slug}/add-section")
+async def add_section(slug_site: str, slug: str, body: AddSection, u=Depends(require_super)):
+    """Insert a ready-made section/stripe into a page (superadmin-only, experimental). Inserts
+    after the top-level section containing the selected element, or at the end of <main>/<body>."""
+    if body.key not in _SECTIONS_RAW: raise HTTPException(400, "Unknown section")
+    p = await db.pages.find_one({"site": slug_site, "slug": slug})
+    if not p: raise HTTPException(404, "Page not found")
+    await maybe_auto_snapshot(slug_site)
+    await push_undo(slug_site, slug)
+    soup = BeautifulSoup(p["template"], "lxml")
+    bodyel = soup.body or soup
+    # bake current region values so existing edits are preserved
+    for eid, r in p.get("regions", {}).items():
+        el = bodyel.find(attrs={"data-eid": eid})
+        if not el: continue
+        if r["type"] == "text":
+            _set_html(el, r["value"])
+            if r.get("href") is not None and el.name in ("a", "button"): el["href"] = r["href"]
+        elif r["type"] == "image":
+            _apply_image(el, r["value"], r.get("alt"))
+    frag = BeautifulSoup(section_html(body.key), "lxml")
+    sec = frag.find("section")
+    main = bodyel.find("main") or bodyel
+    target = bodyel.find(attrs={"data-eid": body.eid}) if body.eid else None
+    if target is not None:
+        anc = target
+        while anc.parent is not None and anc.parent is not main and anc.parent is not bodyel:
+            anc = anc.parent
+        anc.insert_after(sec)
+    else:
+        main.append(sec)
+    regions = assign_regions(bodyel)
+    await db.pages.update_one({"_id": p["_id"]}, {"$set": {"template": str(bodyel), "regions": regions}})
+    return {"ok": True, "label": SECTION_LABELS[body.key]}
 async def bulk_image(slug_site: str, slug: str, body: BulkImage, u=Depends(current_user)):
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})

@@ -385,6 +385,12 @@ function NavMenuModal({ site, onClose, flash }) {
 }
 
 const ACCENT_PRESETS = ["#C82829", "#E85D00", "#D4A24B", "#1F9D55", "#0EA5A4", "#2563EB", "#7C3AED", "#DB2777", "#111827"];
+const THEME_PRESETS = [
+  { name: "Classic Elegant", accent: "#B08D57", heading: "Playfair Display", body: "Lato" },
+  { name: "Bold Modern", accent: "#2563EB", heading: "Space Grotesk", body: "Inter" },
+  { name: "Warm Boutique", accent: "#C2410C", heading: "Cormorant Garamond", body: "Nunito" },
+  { name: "Fresh & Clean", accent: "#0EA5A4", heading: "Poppins", body: "Open Sans" },
+];
 
 function ThemeModal({ site, onClose, flash }) {
   const [data, setData] = useState(null);
@@ -431,6 +437,17 @@ function ThemeModal({ site, onClose, flash }) {
     <Modal title="Colours & Fonts" onClose={onClose}>
       <div className="theme-panel" data-testid="theme-panel">
         <p className="hint">Change your whole site's look in one place. Nothing goes live until you <b>Publish</b>.</p>
+
+        <label className="modal-label">Quick presets</label>
+        <div className="theme-presets">
+          {THEME_PRESETS.map(p => (
+            <button key={p.name} type="button" className="theme-preset" data-testid={`theme-preset-${p.name.replace(/[^a-zA-Z]/g, "")}`}
+              onClick={() => { setAccent(p.accent); setHeading(p.heading); setBody(p.body); setOnAccent("#ffffff"); }}>
+              <span className="theme-preset-dot" style={{ background: p.accent }} />
+              {p.name}
+            </button>
+          ))}
+        </div>
 
         <label className="modal-label">Accent colour</label>
         <div className="theme-color-row">
@@ -497,6 +514,35 @@ function ThemeModal({ site, onClose, flash }) {
 }
 
 
+
+const SECTION_DESC = {
+  cta: "A bold coloured band with a heading + button — great for “Get in touch”.",
+  split: "Text on one side, an image on the other (2 columns).",
+  features: "Three columns to highlight services or selling points.",
+  banner: "A full-width photo with a headline overlaid on top.",
+  quote: "A centred customer testimonial / quote.",
+  heading: "A simple centred heading + intro line to break up the page.",
+};
+
+function SectionPicker({ onPick, onClose, busy }) {
+  const [items, setItems] = useState(null);
+  useEffect(() => { axios.get(`${API}/sections`).then(r => setItems(r.data)).catch(() => setItems([])); }, []);
+  return (
+    <Modal title="Add a section" onClose={onClose}>
+      <p className="hint">Pick a ready-made section — it drops in at the bottom of the page and adopts your theme colours &amp; fonts. Then click its text/images to edit. <b>Superadmin preview.</b></p>
+      <div className="section-picker" data-testid="section-picker">
+        {items === null && <div className="muted">Loading…</div>}
+        {items && items.map(s => (
+          <button key={s.key} className="section-card" data-testid={`section-${s.key}`} disabled={busy}
+            onClick={() => onPick(s.key)}>
+            <div className="section-card-title">{s.label}</div>
+            <div className="section-card-desc">{SECTION_DESC[s.key] || ""}</div>
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
 
 function HelpModal({ onClose }) {
   return (
@@ -1599,6 +1645,7 @@ function StatusModal({ site, page, eid, onClose, onDone, flash }) {
 }
 
 function Editor({ site, page, onBack, flash }) {
+  const { user } = useAuth();
   const iframeRef = useRef(null);
   const fileRef = useRef(null);
   const bulkFileRef = useRef(null);
@@ -1619,7 +1666,19 @@ function Editor({ site, page, onBack, flash }) {
   const [showCoach, setShowCoach] = useState(() => { try { return !localStorage.getItem("ivd_coach_seen"); } catch { return false; } });
   const [justSaved, setJustSaved] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [showSections, setShowSections] = useState(false);
+  const [addingSection, setAddingSection] = useState(false);
   const scrollRef = useRef(0);
+
+  const addSection = async (key) => {
+    setAddingSection(true);
+    try {
+      const { data } = await axios.post(`${API}/pages/${site}/${page}/add-section`, { key });
+      flash(`${data.label || "Section"} added — scroll down and click it to edit`);
+      setDirty(true); setCanUndo(true); setShowSections(false); reload();
+    } catch (e) { flash(e.response?.data?.detail || "Could not add section"); }
+    finally { setAddingSection(false); }
+  };
 
   const reload = useCallback(() => {
     try { scrollRef.current = iframeRef.current?.contentWindow?.scrollY || 0; } catch (e) { scrollRef.current = 0; }
@@ -1794,6 +1853,9 @@ function Editor({ site, page, onBack, flash }) {
           <button className="btn ghost" data-testid="editor-preview" onClick={openPreview} title="See your site exactly as visitors will — nothing is published">👁 Preview</button>
           <button className="btn ghost" data-testid="editor-seo" onClick={() => setShowSeo(true)}>⚙ SEO title</button>
           <button className="btn ghost" data-testid="editor-help" onClick={() => setShowHelp(true)}>? Help</button>
+          {user?.role === "superadmin" && (
+            <button className="btn ghost" data-testid="editor-add-section" onClick={() => setShowSections(true)}>+ Add section</button>
+          )}
           <button className="btn ghost" data-testid="editor-reset" disabled={resetting} onClick={resetPage} title="Undo all draft changes on this page (a backup is saved first)">↺ Reset page</button>
           <button className="btn ghost" data-testid="editor-undo" disabled={!canUndo} onClick={undo}>↶ Undo</button>
           <button className="btn primary" data-testid="editor-publish-btn" onClick={() => setShowPublish(true)}>Publish</button>
@@ -1850,6 +1912,7 @@ function Editor({ site, page, onBack, flash }) {
         </Modal>
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+      {showSections && <SectionPicker busy={addingSection} onPick={addSection} onClose={() => setShowSections(false)} />}
       {showPublish && <PublishConfirm site={site} flash={flash} onClose={() => setShowPublish(false)} />}
       {cropState && <CropModal file={cropState.file} aspect={cropState.aspect} onCancel={() => setCropState(null)} onDone={finishCrop} />}
       {altEdit && <AltModal site={site} page={page} eid={altEdit.eid} initial={altEdit.alt} flash={flash}

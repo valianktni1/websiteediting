@@ -27,6 +27,17 @@ body { font-family: 'Jost', system-ui, sans-serif; background: var(--bg); color:
 .theme-preview{ margin-top:18px; padding:18px; border:1px solid var(--line); border-radius:12px; background:#fff; color:#111; }
 .theme-preview-label{ font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#999; margin-bottom:8px; }
 .theme-preview h3{ font-size:1.5rem; }
+.theme-presets{ display:flex; gap:8px; flex-wrap:wrap; }
+.theme-preset{ display:flex; align-items:center; gap:8px; background:#0f1216; border:1px solid var(--line); color:#fff; padding:8px 12px; border-radius:999px; cursor:pointer; font-size:.82rem; }
+.theme-preset:hover{ border-color:var(--gold); }
+.theme-preset-dot{ width:14px; height:14px; border-radius:50%; display:inline-block; }
+.section-picker{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.section-card{ text-align:left; background:#0f1216; border:1px solid var(--line); border-radius:12px; padding:14px 16px; cursor:pointer; color:#fff; }
+.section-card:hover{ border-color:var(--gold); }
+.section-card:disabled{ opacity:.5; cursor:default; }
+.section-card-title{ font-weight:600; margin-bottom:4px; }
+.section-card-desc{ font-size:.8rem; color:var(--muted); line-height:1.4; }
+@media(max-width:560px){ .section-picker{ grid-template-columns:1fr; } .theme-font-grid{ grid-template-columns:1fr; } }
 
 
 .err{ color:#ff8a8a; font-size:.85rem; }
