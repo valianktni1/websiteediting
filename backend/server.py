@@ -770,15 +770,17 @@ LIGHTBOX_INJECT = """
 .ivdlb-trigger{cursor:zoom-in}
 .ivdlb{position:fixed;inset:0;z-index:2147483000;display:none;align-items:center;justify-content:center;background:rgba(8,8,10,.94);opacity:0;transition:opacity .28s ease}
 .ivdlb.open{display:flex;opacity:1}
-.ivdlb-img{max-width:92vw;max-height:86vh;object-fit:contain;border-radius:6px;box-shadow:0 30px 80px -20px rgba(0,0,0,.8);transform:scale(.96);transition:transform .28s ease;user-select:none;-webkit-user-drag:none}
+.ivdlb-img{max-width:88vw;max-height:86vh;object-fit:contain;border-radius:6px;box-shadow:0 30px 80px -20px rgba(0,0,0,.8);transform:scale(.96);transition:transform .28s ease;user-select:none;-webkit-user-drag:none;z-index:1}
 .ivdlb.open .ivdlb-img{transform:scale(1)}
-.ivdlb-btn{position:absolute;top:0;bottom:0;width:22%;border:0;background:transparent;color:#fff;font-size:2.6rem;cursor:pointer;opacity:.65;transition:opacity .2s;-webkit-tap-highlight-color:transparent}
-.ivdlb-btn:hover{opacity:1}
-.ivdlb-prev{left:0;text-align:left;padding-left:3vw}
-.ivdlb-next{right:0;text-align:right;padding-right:3vw}
-.ivdlb-close{top:14px;right:18px;bottom:auto;width:auto;font-size:2.1rem;line-height:1;padding:6px 14px;opacity:.85}
-.ivdlb-count{position:absolute;bottom:20px;left:0;right:0;text-align:center;color:#fff;font:600 .82rem system-ui,sans-serif;letter-spacing:.08em;opacity:.85}
-@media(max-width:640px){.ivdlb-btn{font-size:2rem;width:26%}.ivdlb-prev{padding-left:2vw}.ivdlb-next{padding-right:2vw}}
+.ivdlb-btn{position:absolute;border:0;color:#fff;cursor:pointer;transition:opacity .2s,background .2s;-webkit-tap-highlight-color:transparent;z-index:2}
+.ivdlb-nav{top:50%;transform:translateY(-50%);width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;background:rgba(255,255,255,.12);opacity:.85}
+.ivdlb-nav:hover{opacity:1;background:rgba(255,255,255,.22)}
+.ivdlb-prev{left:2.5vw}
+.ivdlb-next{right:2.5vw}
+.ivdlb-close{top:16px;right:20px;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.7rem;line-height:1;background:rgba(255,255,255,.12);opacity:.9;z-index:3}
+.ivdlb-close:hover{opacity:1;background:rgba(255,255,255,.22)}
+.ivdlb-count{position:absolute;bottom:20px;left:0;right:0;text-align:center;color:#fff;font:600 .82rem system-ui,sans-serif;letter-spacing:.08em;opacity:.85;z-index:2}
+@media(max-width:640px){.ivdlb-nav{width:46px;height:46px;font-size:1.6rem}.ivdlb-prev{left:2vw}.ivdlb-next{right:2vw}}
 </style>
 <script>
 (function(){
@@ -819,9 +821,9 @@ LIGHTBOX_INJECT = """
     });
     var ov=document.createElement('div'); ov.className='ivdlb';
     ov.innerHTML='<button class="ivdlb-btn ivdlb-close" aria-label="Close">&times;</button>'+
-      '<button class="ivdlb-btn ivdlb-prev" aria-label="Previous photo">&#8249;</button>'+
+      '<button class="ivdlb-btn ivdlb-nav ivdlb-prev" aria-label="Previous photo">&#8249;</button>'+
       '<img class="ivdlb-img" alt="">'+
-      '<button class="ivdlb-btn ivdlb-next" aria-label="Next photo">&#8250;</button>'+
+      '<button class="ivdlb-btn ivdlb-nav ivdlb-next" aria-label="Next photo">&#8250;</button>'+
       '<div class="ivdlb-count"></div>';
     document.body.appendChild(ov);
     var big=ov.querySelector('.ivdlb-img'), cnt=ov.querySelector('.ivdlb-count');

@@ -1,0 +1,22 @@
+{
+  "summary": "Re-tested the 2 HIGH lightbox defects from iteration_21 after fix (compact 56px circular .ivdlb-nav prev/next, .ivdlb-close z-index bumped to 3). All 6 scenarios PASS on preview page /api/editor/preview/wifetobe/bridal-collections. Editor iframe regression also PASS (no .ivdlb injected in /api/editor/page/wifetobe/bridal-collections). Frontend-only testing per request.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Note: injected lightbox trigger images cannot always be normally-clicked by Playwright because the theme's .container div overlays the hero image and 'intercepts pointer events'. This affected only test tooling (bypassed with JS .click()) — real users clicking gallery thumbnails lower on the page are unaffected. Worth verifying pointer-events on the hero .container in the theme if end-user hero-image click-to-enlarge is expected."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100% (6/6)"},
+  "seed_data_creation": "None",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": false,
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (from /app/memory/test_credentials.md context)",
+  "context_for_next_testing_agent": "Lightbox test coordinates on 1920x1080: close btn at ~(1878,38) z=3; prev at (48,512) 56x56 z=2; next at (1816,512) 56x56 z=2. To open lightbox robustly, use JS .click() on img.ivdlb-trigger because theme .container may intercept Playwright normal clicks on hero images (gallery thumbnails work fine). Verified: (T1) close button top-elementFromPoint IS the close button - no interception; (T2) elementFromPoint(30,30) === '.ivdlb open' backdrop and click closes; (T3) same at (100, vh-100); (T4) counter 1/6 -> 2/6 -> 1/6 with next/prev; (T5) Escape closes; (T6) editor iframe /api/editor/page/... has 0 .ivdlb and 0 img.ivdlb-trigger.",
+  "rca_of_the_issue": "iteration_21 defects: (a) prev/next were half-width full-height panels covering close and backdrop; (b) close z-index was equal/lower. Fix in server.py LIGHTBOX_INJECT reduced .ivdlb-nav to 56px circles centered vertically at ~2.5vw offsets and set .ivdlb-close z-index:3 (nav z-index:2), so close btn is topmost and large backdrop regions (top/bottom/full center between the two 56px circles) are directly hittable and close via the overlay's target===overlay handler."
+}
