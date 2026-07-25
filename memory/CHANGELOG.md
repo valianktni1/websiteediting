@@ -2,6 +2,15 @@
 
 ## 2026-06 (fork continuation)
 
+### Insert section under the selected one (DONE, verified) — cms-v32
+- "Add section" now inserts the new stripe **directly below the section you've selected** in the
+  editor (was always page-bottom). The editor iframe now posts {t:'sel',eid} on select/deselect;
+  Editor tracks selEid and passes it to POST add-section; backend climbs to the selected element's
+  top-level section (child of <main>/<body>) and inserts after it. With nothing selected it still
+  appends at the bottom. Picker hint switches wording based on whether something is selected.
+- Verified: curl (insert after a top eid lands the section at ~22% of the body, not the end; undo
+  reverts) + screenshot (select element -> picker reads "directly under the section you've selected").
+
 ### 4 more section types (DONE, verified) — cms-v31
 - Added FAQ accordion (CSS-only <details>/<summary>, editable Q via h3 + A via p), Pricing/packages
   (3 cards Starter/Standard/Premium, editable price), Logo/partner strip (row of editable images),

@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v31-more-sections"
+BUILD_VERSION = "2026-06-14-cms-v32-section-after-selected"
 
 @api.get("/version")
 async def version():
@@ -1051,6 +1051,7 @@ document.addEventListener('DOMContentLoaded',function(){
     if(sel && sel!==el) sel.classList.remove('ed-sel');
     sel=el; el.classList.add('ed-sel');
     var eid=el.getAttribute('data-eid');
+    post({t:'sel',eid:eid});
     var isImg=el.tagName==='IMG';
     var isLink=el.tagName==='A'||el.tagName==='BUTTON';
     var blk=el.closest ? el.closest('[data-block]') : null;
@@ -1130,7 +1131,7 @@ document.addEventListener('DOMContentLoaded',function(){
   document.addEventListener('scroll',function(){ if(sel && tb.style.display!=='none') place(sel); },true);
   document.body.addEventListener('click',function(e){
     if(!e.target.closest('[data-eid]') && !e.target.closest('#ed-tb')){
-      tb.style.display='none'; if(sel){sel.classList.remove('ed-sel'); sel=null;}
+      tb.style.display='none'; if(sel){sel.classList.remove('ed-sel'); sel=null;} post({t:'sel',eid:null});
     }
   });
 });

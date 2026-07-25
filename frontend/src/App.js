@@ -528,13 +528,17 @@ const SECTION_DESC = {
   hours: "Opening hours list next to a map/location image.",
 };
 
-function SectionPicker({ onPick, onClose, busy }) {
+function SectionPicker({ onPick, onClose, busy, hasSelection }) {
   const [data, setData] = useState(null);
   useEffect(() => { axios.get(`${API}/sections`).then(r => setData(r.data)).catch(() => setData({ css: "", items: [] })); }, []);
   const items = data?.items || null;
   return (
     <Modal title="Add a section" onClose={onClose}>
-      <p className="hint">Pick a ready-made section — it drops in at the bottom of the page and adopts your theme colours &amp; fonts. Then click its text/images to edit. <b>Superadmin preview.</b></p>
+      <p className="hint">
+        {hasSelection
+          ? <>It'll be inserted <b>directly under the section you've selected</b>, and adopts your theme colours &amp; fonts. Then click its text/images to edit.</>
+          : <>It drops in at the <b>bottom of the page</b> (tip: click a section first to insert right under it). Adopts your theme colours &amp; fonts.</>} <b>Superadmin preview.</b>
+      </p>
       <div className="section-picker" data-testid="section-picker">
         {items === null && <div className="muted">Loading…</div>}
         {items && items.map(s => (
@@ -1677,14 +1681,15 @@ function Editor({ site, page, onBack, flash }) {
   const [resetting, setResetting] = useState(false);
   const [showSections, setShowSections] = useState(false);
   const [addingSection, setAddingSection] = useState(false);
+  const [selEid, setSelEid] = useState(null);
   const scrollRef = useRef(0);
 
   const addSection = async (key) => {
     setAddingSection(true);
     try {
-      const { data } = await axios.post(`${API}/pages/${site}/${page}/add-section`, { key });
-      flash(`${data.label || "Section"} added — scroll down and click it to edit`);
-      setDirty(true); setCanUndo(true); setShowSections(false); reload();
+      const { data } = await axios.post(`${API}/pages/${site}/${page}/add-section`, { key, eid: selEid || "" });
+      flash(selEid ? `${data.label || "Section"} added below the selected section` : `${data.label || "Section"} added — scroll down and click it to edit`);
+      setDirty(true); setCanUndo(true); setShowSections(false); setSelEid(null); reload();
     } catch (e) { flash(e.response?.data?.detail || "Could not add section"); }
     finally { setAddingSection(false); }
   };
@@ -1753,6 +1758,7 @@ function Editor({ site, page, onBack, flash }) {
 
   const onMessage = useCallback(async (ev) => {
     const d = ev.data || {};
+    if (d.t === "sel") { setSelEid(d.eid || null); return; }
     if (d.t === "text") {
       await axios.put(`${API}/pages/${site}/${page}/region`, { eid: d.eid, value: d.value });
       setDirty(true); setCanUndo(true); setJustSaved(true); flash("Saved");
@@ -1921,7 +1927,7 @@ function Editor({ site, page, onBack, flash }) {
         </Modal>
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
-      {showSections && <SectionPicker busy={addingSection} onPick={addSection} onClose={() => setShowSections(false)} />}
+      {showSections && <SectionPicker busy={addingSection} hasSelection={!!selEid} onPick={addSection} onClose={() => setShowSections(false)} />}
       {showPublish && <PublishConfirm site={site} flash={flash} onClose={() => setShowPublish(false)} />}
       {cropState && <CropModal file={cropState.file} aspect={cropState.aspect} onCancel={() => setCropState(null)} onDone={finishCrop} />}
       {altEdit && <AltModal site={site} page={page} eid={altEdit.eid} initial={altEdit.alt} flash={flash}
