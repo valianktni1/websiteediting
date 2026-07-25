@@ -1,0 +1,46 @@
+{
+  "summary": "Frontend-only testing of the click-to-enlarge lightbox injected on public preview renders. Verified via https://elementor-builder-4.preview.emergentagent.com/api/editor/preview/wifetobe/{home,boutiques,bridal-collections,brides,big-screen-advertising}. Login via /api/auth/login (admin@wifetobe.org / ChangeMe!2026) sets the httpOnly access_token cookie which authorises the preview URL in the same context. Core lightbox flow works: overlay opens on trigger click, enlarged image + counter render, prev/next navigate through the implicit gallery, Escape closes, and the lightbox is correctly NOT injected inside the CMS editor iframe (clicking an image there opens the editor toolbar as expected). However two significant UX defects were found: (1) .ivdlb-prev and .ivdlb-next hit-boxes span the entire viewport height (1080px) and ~422px width each — this completely covers the .ivdlb-close button (which sits at x=1854-1902, y=14-59 inside next's bounding rect), so users cannot click the × close button on desktop; (2) most of the dark backdrop is also covered by prev/next hit-boxes so backdrop-click-to-close only fires in narrow vertical strips between the image and the side buttons.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Lightbox (.ivdlb overlay injected by backend LIGHTBOX_INJECT)",
+        "issue": "The .ivdlb-next button has computed bounding rect {x:1497.6, y:0, width:422.4, height:1080} and .ivdlb-prev is {x:0, y:0, width:422.4, height:1080}. The .ivdlb-close button sits at {x:1854.4, y:14, width:47.6, height:45.6} which is entirely INSIDE the .ivdlb-next rect. Playwright confirms 'button.ivdlb-next intercepts pointer events' when trying to click .ivdlb-close normally. Real users clicking the × will actually trigger Next. Need to either (a) lower .ivdlb-next z-index so .ivdlb-close is on top, (b) shrink prev/next hit-box to a narrower band (e.g. ~80px wide, vertically centered), or (c) exclude the top-right close area from next's hit region.",
+        "selector": ".ivdlb-close vs .ivdlb-next / .ivdlb-prev",
+        "priority": "HIGH"
+      },
+      {
+        "component": "Lightbox backdrop-click-to-close",
+        "issue": "Because .ivdlb-prev and .ivdlb-next each cover a full ~422x1080 half of the overlay, most of the visible 'dark backdrop' is actually the prev/next button surface. A backdrop click at (10,10) or (200,1000) does NOT close (it hits prev). Only clicks in the narrow gap between the image and the side buttons (e.g. (470,500) on a 1920-wide viewport) actually close. Users will perceive backdrop-to-close as unreliable.",
+        "selector": ".ivdlb (backdrop) obscured by .ivdlb-prev/.ivdlb-next",
+        "priority": "HIGH"
+      },
+      {
+        "component": "Lightbox groups / counter",
+        "issue": "No injected trigger img carries a data-ivdlb-group attribute (all 'None' on bridal-collections which has 9 img.ivdlb-trigger elements). The JS still forms one implicit gallery, but the counter reads '3 / 6' while there are 9 triggers on the page — some triggers appear to be filtered/deduped out of the navigable set. Worth verifying that the intended gallery grouping matches what the user sees.",
+        "selector": "img.ivdlb-trigger[data-ivdlb-group], .ivdlb-count",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix .ivdlb-close being covered by .ivdlb-next: either raise close z-index above next, or shrink prev/next hit-boxes to a narrower vertically-centered band so they don't overlap the close button or dominate the backdrop.",
+    "Make backdrop-click reliably close the overlay by ensuring the visible dark area is not consumed by prev/next hit-boxes.",
+    "Verify the counter/gallery grouping on bridal-collections (9 triggers on page, counter shows '/ 6') — decide whether the LIGHTBOX_INJECT JS should include all triggers or if some intentional filtering is happening."
+  ],
+  "critical_code_review_comments": [
+    "In backend/server.py LIGHTBOX_INJECT: prev/next buttons appear to be sized full-height/half-width; add max-width and vertical centering, and give .ivdlb-close a higher z-index than the nav buttons so it remains clickable.",
+    "Consider tagging trigger images with a data-ivdlb-group so galleries are explicit and the counter reflects the actual on-page group size."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "70%"},
+  "seed_data_creation": "None — used existing wifetobe site seeded on boot.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (from /app/memory/test_credentials.md). Login sets httpOnly cookie access_token; navigating to /api/editor/preview/... in the same browser context is authorised.",
+  "context_for_next_testing_agent": "Preview render URL pattern: {REACT_APP_BACKEND_URL}/api/editor/preview/wifetobe/{slug}. Pages with lightbox triggers verified: home (7), boutiques (2), bridal-collections (9), brides (8), big-screen-advertising (5). Lightbox works: overlay .ivdlb toggles 'open' class, .ivdlb-img shows enlarged src, .ivdlb-count shows 'N / M', .ivdlb-prev/.ivdlb-next navigate. Escape closes reliably. Backdrop close only works in narrow strip between image and prev/next buttons (defect). Close button is covered by .ivdlb-next hit-box (defect). Editor iframe test: after logging in and opening a page in the editor, iframe URL is /api/editor/page/wifetobe/{slug} — that iframe contains 0 .ivdlb and 0 img.ivdlb-trigger elements, and clicking an image opens the editor toolbar (Replace / Add photos / Alt text / ...). All triggers observed have data-ivdlb-group = null. Lazy-load: first image loading='auto', rest loading='lazy' — matches requirement.",
+  "rca_of_the_issue": "The injected lightbox CSS assigns .ivdlb-prev and .ivdlb-next to occupy the full-height left/right halves of the overlay (bounding rects 0..422 x 0..1080 and 1497..1920 x 0..1080 at 1920x1080). Because .ivdlb-close is absolutely positioned at ~(1854,14) — geometrically inside .ivdlb-next — and no explicit z-index promotes close above next, the next button intercepts pointer events for the close button. Similarly the backdrop-click-to-close handler on .ivdlb never fires for most of the visible dark area because the pointer target is the prev/next button, not the overlay. Fix in backend LIGHTBOX_INJECT CSS: shrink .ivdlb-prev/.ivdlb-next to narrow vertically-centered buttons (e.g. width:64px; top:50%; transform:translateY(-50%)) or set .ivdlb-close z-index above them, and ensure clicks on .ivdlb (target===currentTarget) call close."
+}

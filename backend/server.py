@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v25-lazy-images"
+BUILD_VERSION = "2026-06-14-cms-v26-lightbox"
 
 @api.get("/version")
 async def version():
@@ -741,11 +741,12 @@ def render_page(page, for_editor=False, asset_base=""):
     editor_assets = EDITOR_INJECT if for_editor else ""
     finance_assets = FINANCE_INJECT if (not for_editor and 'data-block="car"' in inner) else ""
     status_assets = STATUS_CSS if 'data-block=' in inner else ""
+    lightbox_assets = LIGHTBOX_INJECT if (not for_editor and '<img' in inner) else ""
     return f"""<!DOCTYPE html><html lang="en-GB"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">{base}
 {head}
 {status_assets}
-{editor_assets}</head><body>{inner}{finance_assets}</body></html>"""
+{editor_assets}</head><body>{inner}{finance_assets}{lightbox_assets}</body></html>"""
 
 BLANK_IMG = "data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'940'%20height%3D'705'%3E%3Crect%20width%3D'100%25'%20height%3D'100%25'%20fill%3D'%23e9ecf1'%2F%3E%3Ctext%20x%3D'50%25'%20y%3D'50%25'%20fill%3D'%239aa1ac'%20font-family%3D'Arial%2Csans-serif'%20font-size%3D'40'%20text-anchor%3D'middle'%20dominant-baseline%3D'middle'%3E%2B%20Add%20photo%3C%2Ftext%3E%3C%2Fsvg%3E"
 from assets_data import COMING_SOON_IMG
@@ -761,6 +762,89 @@ STATUS_CSS = """<style>
 [data-block][data-status="sold"] img{filter:grayscale(.5);opacity:.72}
 [data-block][data-status="sold"] .price,[data-block][data-status="sold"] .uc-price,[data-block][data-status="sold"] [class*="price"]{text-decoration:line-through;opacity:.7}
 </style>"""
+
+# Click-to-enlarge lightbox for galleries/photos. Injected on the LIVE/Preview site only
+# (never in the editor iframe, guarded by window.self!==window.top). Self-contained, no deps.
+LIGHTBOX_INJECT = """
+<style>
+.ivdlb-trigger{cursor:zoom-in}
+.ivdlb{position:fixed;inset:0;z-index:2147483000;display:none;align-items:center;justify-content:center;background:rgba(8,8,10,.94);opacity:0;transition:opacity .28s ease}
+.ivdlb.open{display:flex;opacity:1}
+.ivdlb-img{max-width:92vw;max-height:86vh;object-fit:contain;border-radius:6px;box-shadow:0 30px 80px -20px rgba(0,0,0,.8);transform:scale(.96);transition:transform .28s ease;user-select:none;-webkit-user-drag:none}
+.ivdlb.open .ivdlb-img{transform:scale(1)}
+.ivdlb-btn{position:absolute;top:0;bottom:0;width:22%;border:0;background:transparent;color:#fff;font-size:2.6rem;cursor:pointer;opacity:.65;transition:opacity .2s;-webkit-tap-highlight-color:transparent}
+.ivdlb-btn:hover{opacity:1}
+.ivdlb-prev{left:0;text-align:left;padding-left:3vw}
+.ivdlb-next{right:0;text-align:right;padding-right:3vw}
+.ivdlb-close{top:14px;right:18px;bottom:auto;width:auto;font-size:2.1rem;line-height:1;padding:6px 14px;opacity:.85}
+.ivdlb-count{position:absolute;bottom:20px;left:0;right:0;text-align:center;color:#fff;font:600 .82rem system-ui,sans-serif;letter-spacing:.08em;opacity:.85}
+@media(max-width:640px){.ivdlb-btn{font-size:2rem;width:26%}.ivdlb-prev{padding-left:2vw}.ivdlb-next{padding-right:2vw}}
+</style>
+<script>
+(function(){
+  if(window.self!==window.top) return;
+  if(window.__ivdLightbox) return; window.__ivdLightbox=true;
+  function ready(fn){ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',fn); else fn(); }
+  ready(function(){
+    function isImgUrl(u){ u=(u||'').split('?')[0].split('#')[0].toLowerCase(); return ['.jpg','.jpeg','.png','.webp','.gif','.avif'].some(function(e){return u.endsWith(e);}); }
+    function eligible(img){
+      if(img.closest('.ivdlb')) return false;
+      if(/logo|brand|icon|avatar|sprite/i.test(img.className||'')) return false;
+      if(img.closest('header,nav,footer')) return false;
+      var a=img.closest('a[href]');
+      if(a && !isImgUrl(a.getAttribute('href')||'')) return false; // leave real page links alone
+      var r=img.getBoundingClientRect();
+      if(r.width && r.width<110) return false; // skip tiny/icon images
+      return true;
+    }
+    var imgs=[].slice.call(document.querySelectorAll('img')).filter(eligible);
+    if(!imgs.length) return;
+    function bigSrc(img){ var a=img.closest('a[href]'); if(a && isImgUrl(a.getAttribute('href')||'')) return a.href; return img.currentSrc||img.src; }
+    function groupRoot(img){
+      var el=img.parentElement, best=img.parentElement;
+      while(el){
+        var q=el.querySelectorAll('img'), n=0;
+        for(var i=0;i<q.length;i++){ if(imgs.indexOf(q[i])>=0){ n++; if(n>=2) break; } }
+        if(n>=2){ best=el; break; }
+        el=el.parentElement;
+      }
+      return best;
+    }
+    var groups=[], gmap=new Map();
+    imgs.forEach(function(img){
+      var root=groupRoot(img);
+      if(!gmap.has(root)){ gmap.set(root, groups.length); groups.push([]); }
+      groups[gmap.get(root)].push(img);
+      img.classList.add('ivdlb-trigger');
+    });
+    var ov=document.createElement('div'); ov.className='ivdlb';
+    ov.innerHTML='<button class="ivdlb-btn ivdlb-close" aria-label="Close">&times;</button>'+
+      '<button class="ivdlb-btn ivdlb-prev" aria-label="Previous photo">&#8249;</button>'+
+      '<img class="ivdlb-img" alt="">'+
+      '<button class="ivdlb-btn ivdlb-next" aria-label="Next photo">&#8250;</button>'+
+      '<div class="ivdlb-count"></div>';
+    document.body.appendChild(ov);
+    var big=ov.querySelector('.ivdlb-img'), cnt=ov.querySelector('.ivdlb-count');
+    var prevBtn=ov.querySelector('.ivdlb-prev'), nextBtn=ov.querySelector('.ivdlb-next');
+    var cur=[], idx=0;
+    function show(i){ idx=(i+cur.length)%cur.length; var im=cur[idx]; big.src=bigSrc(im); big.alt=im.alt||''; var multi=cur.length>1; cnt.textContent=multi?(idx+1)+' / '+cur.length:''; prevBtn.style.display=nextBtn.style.display=multi?'':'none'; }
+    function open(group,i){ cur=group; ov.classList.add('open'); document.documentElement.style.overflow='hidden'; show(i); }
+    function close(){ ov.classList.remove('open'); document.documentElement.style.overflow=''; big.src=''; }
+    imgs.forEach(function(img){
+      img.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); var group=groups[gmap.get(groupRoot(img))]; open(group, group.indexOf(img)); });
+    });
+    ov.querySelector('.ivdlb-close').addEventListener('click',close);
+    prevBtn.addEventListener('click',function(e){e.stopPropagation();show(idx-1);});
+    nextBtn.addEventListener('click',function(e){e.stopPropagation();show(idx+1);});
+    ov.addEventListener('click',function(e){ if(e.target===ov) close(); });
+    document.addEventListener('keydown',function(e){ if(!ov.classList.contains('open'))return; if(e.key==='Escape')close(); else if(e.key==='ArrowLeft')show(idx-1); else if(e.key==='ArrowRight')show(idx+1); });
+    var sx=0; ov.addEventListener('touchstart',function(e){sx=e.touches[0].clientX;},{passive:true});
+    ov.addEventListener('touchend',function(e){ var dx=e.changedTouches[0].clientX-sx; if(Math.abs(dx)>50) show(idx+(dx<0?1:-1)); });
+  });
+})();
+</script>
+"""
+
 
 EDITOR_INJECT = """
 <style>
