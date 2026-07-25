@@ -2,6 +2,16 @@
 
 ## 2026-06 (fork continuation)
 
+### Lazy-load off-screen images site-wide (DONE, verified) — cms-v25
+- `render_page` (LIVE/Preview only, not editor): first image on the page stays eager (fast
+  LCP/first paint); every other `<img>` gets `loading="lazy"` + `decoding="async"` unless it
+  already has a `loading` attr. Big win on image-heavy pages (car sliders load ~1 photo/car
+  up front instead of all 12; photographer galleries only fetch what's on screen).
+- Zero new files, no srcset (avoids the old srcset swap bug), no SFTP/dist changes, editor
+  unchanged (images stay eager so they're always visible for editing). Near-zero breakage risk.
+- Verified: first img eager, rest lazy+async, pre-set eager images respected.
+
+
 ### Auto-hide unfinished/placeholder car cards on LIVE site (DONE, verified) — cms-v24
 - Problem: half-finished cars (title "Edit", price "£0000", "Edit" bullet points) from
   the "+ Blank card / Add another car" flow leaked onto the published site

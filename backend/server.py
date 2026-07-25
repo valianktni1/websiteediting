@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v24-hide-placeholders"
+BUILD_VERSION = "2026-06-14-cms-v25-lazy-images"
 
 @api.get("/version")
 async def version():
@@ -719,6 +719,17 @@ def render_page(page, for_editor=False, asset_base=""):
                 c.extract()
             for c in keep + sold:
                 p.append(c)
+        # PERFORMANCE: lazy-load off-screen images so image-heavy pages (car sliders,
+        # photographer galleries) load fast. Keep the FIRST image eager for a quick first
+        # paint (good for Google's LCP score); every other image loads only when needed.
+        # Applied to the LIVE render only (editor keeps images eager so they're always visible).
+        for i, img in enumerate(bodyel.find_all("img")):
+            if i == 0:
+                continue
+            if not img.has_attr("loading"):
+                img["loading"] = "lazy"
+            if not img.has_attr("decoding"):
+                img["decoding"] = "async"
     inner = bodyel.decode_contents()
     seo = page.get("seo",{})
     head = f"<title>{seo.get('title','')}</title>\n" + "\n".join(seo.get("metas",[]))
