@@ -2,6 +2,20 @@
 
 ## 2026-06 (fork continuation)
 
+### Fix: deleting a feature bullet corrupted the whole list (DONE, verified) — cms-v34
+- SYMPTOM (from user screenshot): deleting one repetitive feature bullet made the list explode —
+  duplicated/merged bullets, stray "ADD A FEATURE" prompts, broken layout, repeated description.
+- ROOT CAUSE: a bullet's stored text region value had been polluted by a PASTE (browser inserts
+  <div>/<li>/<ul> when you paste multi-line text). Baking that value back into a single <li> via
+  _set_html created nested lists / extra bullets; deleting then re-baked and made it worse.
+- FIX: _set_html now FLATTENS block-level tags (div/p/li/ul/ol/section/pasted cards) inside every
+  text region, keeping only inline formatting (b/i/em/u/br/span/a). A pasted mess collapses into
+  one clean bullet. SELF-HEALING: every op re-bakes all regions through the hardened _set_html, so
+  existing corrupted cards auto-clean on the next edit.
+- Verified by reproduction: a bullet value with <div>+<ul><li>..</li></ul> bakes into a single
+  clean <li> (no nested ul/div), and deleting it leaves a clean list. Clean-case delete already worked.
+
+
 ### Fix: "+ Add another car/bike" copied the previous vehicle's specs (DONE, verified) — cms-v33
 - ROOT CAUSE: the used-bikes (and any) page uses the `veh-` card layout, but the add-blank-car op
   only fully blanked the `uc-` layout. So a "new" bike inherited the donor's specs (year/mileage/

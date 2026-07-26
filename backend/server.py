@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v33-bike-blank-fix"
+BUILD_VERSION = "2026-06-14-cms-v34-feature-delete-fix"
 
 @api.get("/version")
 async def version():
@@ -237,9 +237,16 @@ def _relativize_assets(html):
     html = re.sub(r'url\((["\']?)/(?!/)', r'url(\1', html)
     return html
 
+_INLINE_OK = {"b", "strong", "i", "em", "u", "small", "br", "sub", "sup", "mark", "span", "a"}
 def _set_html(el, html):
     el.clear()
     frag = BeautifulSoup(html or "", "html.parser")
+    # Flatten block-level tags (div/p/li/ul/section/pasted cards) so a single text region
+    # (a feature <li>, heading or paragraph) can NEVER be corrupted into duplicated/merged
+    # bullets by content pasted from elsewhere. Keep basic inline formatting only.
+    for t in frag.find_all(True):
+        if t.name not in _INLINE_OK:
+            t.unwrap()
     for c in list(frag.contents):
         el.append(c)
 
