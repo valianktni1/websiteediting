@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-06-14-cms-v32-section-after-selected"
+BUILD_VERSION = "2026-06-14-cms-v33-bike-blank-fix"
 
 @api.get("/version")
 async def version():
@@ -1638,7 +1638,22 @@ async def page_op(slug_site: str, slug: str, body: PageOp, u=Depends(current_use
             _reset(sp, "\u2013")
         for li in clone.select(".uc-features li"):
             _reset(li, "spec")
-        # fallback for non-uc car markup: blank the editable text generically
+        # ALSO blank generic/veh price + spec VALUES + strap + features so a new card never
+        # inherits the donor bike/car's numbers (the .uc-* selectors above miss veh-* markup).
+        for pr in clone.select('.veh-price,.uc-price'):
+            _reset(pr, "\u00a30000")
+        for pr in clone.select('[class*="price"]'):
+            if not pr.find(True): _reset(pr, "\u00a30000")
+        for dd in clone.select('.veh-specs dd, dd'):
+            leaf = dd.find(["span", "b", "strong"])
+            (leaf or dd).clear(); (leaf or dd).append("\u2013")
+        for sp in clone.select('.uc-spec b, .uc-spec span'):
+            _reset(sp, "\u2013")
+        for st in clone.select('.veh-strap'):
+            _reset(st, "Add a short description here.")
+        for li in clone.select('.veh-features li'):
+            _reset(li, "spec")
+        # fallback for other markup: blank the editable text generically
         if not clone.select(".uc-car-head, .uc-price, .uc-specs, .uc-features"):
             for el in clone.find_all(list(EDIT_TAGS)):
                 if el.find(list(EDIT_TAGS)): continue

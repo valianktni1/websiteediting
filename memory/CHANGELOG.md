@@ -2,6 +2,21 @@
 
 ## 2026-06 (fork continuation)
 
+### Fix: "+ Add another car/bike" copied the previous vehicle's specs (DONE, verified) — cms-v33
+- ROOT CAUSE: the used-bikes (and any) page uses the `veh-` card layout, but the add-blank-car op
+  only fully blanked the `uc-` layout. So a "new" bike inherited the donor's specs (year/mileage/
+  engine/gearbox/MOT) and description — which looked like it was "duplicating".
+- FIX: add-blank-car now also blanks veh/generic price (£0000), spec VALUES (.veh-specs dd + any
+  dd + .uc-spec b/span -> "–"), .veh-strap and .veh-features. Confirmed on the real broadfield
+  used-bikes structure: donor "14,993 miles" no longer leaks into the new card; delete of the new
+  card then works (parent data-block=veh, decompose ok). add-blank-block already did this (cms-v24).
+- Live safety unchanged: blank/placeholder vehicle cards (title Edit/Make & Model/Coming soon or
+  price £0000) are still auto-hidden on the published site. broadfield /used-bikes is currently a
+  404 (not published), so nothing has leaked live.
+- Delete verified working in code for card-level selections; if the user still sees a delete issue,
+  need the exact symptom (nothing happens / only part disappears / reappears after publish).
+
+
 ### Insert section under the selected one (DONE, verified) — cms-v32
 - "Add section" now inserts the new stripe **directly below the section you've selected** in the
   editor (was always page-bottom). The editor iframe now posts {t:'sel',eid} on select/deselect;
