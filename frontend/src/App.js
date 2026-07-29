@@ -179,6 +179,179 @@ function Modal({ title, onClose, children, wide }) {
   );
 }
 
+function storageHas(key) {
+  try { return localStorage.getItem(key) === "1"; }
+  catch (e) { return true; }
+}
+
+function storageMark(key) {
+  try { localStorage.setItem(key, "1"); }
+  catch (e) { /* private browsing / blocked storage: tour still works for this visit */ }
+}
+
+function GuidedTour({ open, steps, storageKey, onClose }) {
+  const [index, setIndex] = useState(0);
+  const [targetRect, setTargetRect] = useState(null);
+  const [cardPos, setCardPos] = useState(null);
+  const cardRef = useRef(null);
+  const safeIndex = Math.min(index, Math.max(steps.length - 1, 0));
+  const step = steps[safeIndex];
+
+  const finish = useCallback(() => {
+    storageMark(storageKey);
+    onClose();
+  }, [storageKey, onClose]);
+
+  useEffect(() => {
+    if (open) setIndex(0);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !step) return undefined;
+    let frame = 0;
+    let observer;
+    const update = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const el = step.selector ? document.querySelector(step.selector) : null;
+        if (!el) { setTargetRect(null); return; }
+        const r = el.getBoundingClientRect();
+        if (r.bottom < 0 || r.top > window.innerHeight) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        const fresh = el.getBoundingClientRect();
+        setTargetRect({ top: fresh.top, left: fresh.left, right: fresh.right, bottom: fresh.bottom, width: fresh.width, height: fresh.height });
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    observer = new MutationObserver(update);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+      observer.disconnect();
+    };
+  }, [open, step]);
+
+  useEffect(() => {
+    if (!open || !step) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const card = cardRef.current;
+      if (!card) return;
+      const margin = 16;
+      const gap = 18;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const cw = card.offsetWidth;
+      const ch = card.offsetHeight;
+      if (!targetRect) {
+        setCardPos({ left: Math.max(margin, (vw - cw) / 2), top: Math.max(margin, (vh - ch) / 2) });
+        return;
+      }
+      let placement = step.placement || "auto";
+      if (placement === "auto") {
+        if (vh - targetRect.bottom >= ch + gap + margin) placement = "bottom";
+        else if (targetRect.top >= ch + gap + margin) placement = "top";
+        else if (vw - targetRect.right >= cw + gap + margin) placement = "right";
+        else if (targetRect.left >= cw + gap + margin) placement = "left";
+        else placement = "overlay";
+      }
+      let left;
+      let top;
+      if (placement === "bottom") {
+        left = targetRect.left + (targetRect.width - cw) / 2;
+        top = targetRect.bottom + gap;
+      } else if (placement === "top") {
+        left = targetRect.left + (targetRect.width - cw) / 2;
+        top = targetRect.top - ch - gap;
+      } else if (placement === "right") {
+        left = targetRect.right + gap;
+        top = targetRect.top + (targetRect.height - ch) / 2;
+      } else if (placement === "left") {
+        left = targetRect.left - cw - gap;
+        top = targetRect.top + (targetRect.height - ch) / 2;
+      } else {
+        left = vw - cw - margin;
+        top = vh - ch - margin;
+      }
+      setCardPos({
+        left: Math.min(Math.max(margin, left), Math.max(margin, vw - cw - margin)),
+        top: Math.min(Math.max(margin, top), Math.max(margin, vh - ch - margin)),
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, step, targetRect, index]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") finish();
+      if (e.key === "ArrowRight") setIndex(i => Math.min(i + 1, steps.length - 1));
+      if (e.key === "ArrowLeft") setIndex(i => Math.max(i - 1, 0));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, steps.length, finish]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const timer = window.setTimeout(() => cardRef.current?.focus({ preventScroll: true }), 30);
+    return () => window.clearTimeout(timer);
+  }, [open, safeIndex]);
+
+  if (!open || !step || !steps.length) return null;
+  const pad = 10;
+  const r = targetRect && {
+    top: Math.max(0, targetRect.top - pad),
+    left: Math.max(0, targetRect.left - pad),
+    right: Math.min(window.innerWidth, targetRect.right + pad),
+    bottom: Math.min(window.innerHeight, targetRect.bottom + pad),
+  };
+  const isLast = safeIndex === steps.length - 1;
+
+  return (
+    <div className="tour-root" role="dialog" aria-modal="true" aria-label="Interactive editor tour" data-testid="guided-tour">
+      {r ? (
+        <>
+          <div className="tour-mask" style={{ top: 0, left: 0, right: 0, height: r.top }} />
+          <div className="tour-mask" style={{ top: r.bottom, left: 0, right: 0, bottom: 0 }} />
+          <div className="tour-mask" style={{ top: r.top, left: 0, width: r.left, height: r.bottom - r.top }} />
+          <div className="tour-mask" style={{ top: r.top, left: r.right, right: 0, height: r.bottom - r.top }} />
+          <div className="tour-spotlight" style={{ top: r.top, left: r.left, width: r.right - r.left, height: r.bottom - r.top }} />
+        </>
+      ) : <div className="tour-mask tour-mask-full" />}
+      <div
+        ref={cardRef}
+        className="tour-card"
+        style={cardPos ? { left: cardPos.left, top: cardPos.top } : { visibility: "hidden" }}
+        data-testid="tour-card"
+        aria-live="polite"
+        tabIndex={-1}
+      >
+        <div className="tour-card-top">
+          <span className="tour-progress" data-testid="tour-progress">Step {safeIndex + 1} of {steps.length}</span>
+          <button className="tour-skip" data-testid="tour-skip" onClick={finish}>Skip tour</button>
+        </div>
+        <h3>{step.title}</h3>
+        <p>{step.body}</p>
+        {step.tip && <div className="tour-tip">{step.tip}</div>}
+        <div className="tour-footer">
+          <div className="tour-dots" aria-hidden="true">
+            {steps.map((_, i) => <span key={i} className={i === safeIndex ? "on" : ""} />)}
+          </div>
+          <div className="tour-actions">
+            <button className="btn ghost" data-testid="tour-back" disabled={safeIndex === 0} onClick={() => setIndex(i => Math.max(i - 1, 0))}>Back</button>
+            <button className="btn primary" data-testid="tour-next" onClick={() => isLast ? finish() : setIndex(i => Math.min(i + 1, steps.length - 1))}>{isLast ? "Finish" : "Next"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AddPageModal({ site, onClose, onDone, flash }) {
   const [title, setTitle] = useState(""); const [slug, setSlug] = useState("");
   const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
@@ -557,7 +730,7 @@ function SectionPicker({ onPick, onClose, busy, hasSelection }) {
   );
 }
 
-function HelpModal({ onClose }) {
+function HelpModal({ onClose, onStartTour }) {
   return (
     <Modal title="How to use the editor" onClose={onClose} wide>
       <div className="help-guide" data-testid="help-guide">
@@ -623,6 +796,7 @@ function HelpModal({ onClose }) {
         </ul>
       </div>
       <div className="modal-actions">
+        {onStartTour && <button className="btn" data-testid="help-start-tour" onClick={() => { onClose(); window.setTimeout(onStartTour, 0); }}>▶ Take the interactive tour</button>}
         <button className="btn primary" onClick={onClose}>Got it</button>
       </div>
     </Modal>
@@ -1435,6 +1609,9 @@ function Dashboard() {
   const [editing, setEditing] = useState(null);
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState(null);
+  const [showTour, setShowTour] = useState(false);
+  const tourAutoStarted = useRef(false);
+  const dashboardTourKey = `ivd_dashboard_tour_v1_${user.email}`;
 
   const loadSites = useCallback((preferSlug) => {
     axios.get(`${API}/sites`).then(r => {
@@ -1450,6 +1627,14 @@ function Dashboard() {
     });
   }, [user]);
   useEffect(() => { loadSites(); }, [loadSites]);
+
+  useEffect(() => {
+    if (tourAutoStarted.current || !site) return undefined;
+    tourAutoStarted.current = true;
+    if (storageHas(dashboardTourKey)) return undefined;
+    const timer = window.setTimeout(() => setShowTour(true), 450);
+    return () => window.clearTimeout(timer);
+  }, [site, dashboardTourKey]);
 
   useEffect(() => {
     if (!site) return;
@@ -1494,6 +1679,51 @@ function Dashboard() {
   };
   const isAdmin = user.role === "admin" || user.role === "superadmin";
 
+  const dashboardTourSteps = [
+    {
+      title: `Welcome${user.name ? `, ${user.name}` : ""} 👋`,
+      body: "This short tour shows the safest route from choosing a page to previewing and publishing it. Nothing in the editor changes your live website until you confirm Publish.",
+      tip: "You can stop now and restart the tour at any time using the Tour button.",
+    },
+    sites.length > 1 ? {
+      selector: '[data-testid="site-switcher"]',
+      title: "Choose the website",
+      body: "When your account has more than one website, use this menu to switch between them. Every site keeps its own pages, drafts, backups and publishing details.",
+      placement: "bottom",
+    } : null,
+    pages.length ? {
+      selector: ".page-grid .page-card",
+      title: "Open a page to edit",
+      body: "Each card is one page of the website. Click a card to open the visual editor. You can also drag cards to change the order used by the site menu.",
+      placement: "right",
+    } : null,
+    site ? {
+      selector: ".dash-head .actions",
+      title: "Your site tools",
+      body: "From here you can add pages, change repeated wording across the whole site, adjust colours and fonts, open restore points, preview, and publish.",
+      placement: "bottom",
+    } : null,
+    site ? {
+      selector: '[data-testid="version-history-btn"]',
+      title: "Restore points are your safety net",
+      body: "Restore points let you roll the whole draft site back to an earlier moment. The editor also creates automatic safety snapshots while you work.",
+      placement: "bottom",
+    } : null,
+    site ? {
+      selector: '[data-testid="preview-btn"]',
+      title: "Preview before going live",
+      body: "Preview builds the complete draft website and opens it exactly as visitors will see it, without publishing anything.",
+      placement: "bottom",
+    } : null,
+    site ? {
+      selector: '[data-testid="publish-btn"]',
+      title: "Publish only when you are ready",
+      body: "Publishing shows a clear summary of the changes first. The app then creates a backup and sends the approved version to Hostinger.",
+      tip: "The editor is private and draft-first: experimenting is safe.",
+      placement: "bottom",
+    } : null,
+  ].filter(Boolean);
+
   if (editing) return <Editor site={site.slug} page={editing} onBack={() => setEditing(null)} flash={flash} />;
 
   return (
@@ -1501,6 +1731,7 @@ function Dashboard() {
       <header className="topbar">
         <div className="brand">Ivory Digital <span>Editor</span></div>
         <div className="topbar-right">
+          <button className="btn ghost" data-testid="dashboard-tour-btn" onClick={() => setShowTour(true)}>▶ Tour</button>
           <button className="btn ghost" data-testid="help-btn" onClick={() => setModal("help")}>Help</button>
           {isAdmin && <button className="btn ghost" data-testid="admin-settings-btn" onClick={() => setModal("admin")}>Admin settings</button>}
           <span className="who" data-testid="current-user">{user.email} · {user.role}</span>
@@ -1561,12 +1792,13 @@ function Dashboard() {
       {modal === "addpage" && site && <AddPageModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => { setModal(null); loadSites(site.slug); }} />}
       {modal === "replace" && site && <FindReplaceModal site={site.slug} flash={flash} onClose={() => setModal(null)} onDone={() => loadSites(site.slug)} />}
       {modal === "theme" && site && <ThemeModal site={site.slug} flash={flash} onClose={() => setModal(null)} />}
-      {modal === "help" && <HelpModal onClose={() => setModal(null)} />}
+      {modal === "help" && <HelpModal onClose={() => setModal(null)} onStartTour={() => setShowTour(true)} />}
       {modal === "versions" && site && <VersionHistory site={site.slug} flash={flash} onClose={() => setModal(null)} onRestored={() => loadSites(site.slug)} />}
       {modal === "admin" && <AdminSettings user={user} flash={flash} onClose={() => setModal(null)} onSitesChanged={() => loadSites()} />}
       {modal === "publish" && site && <PublishConfirm site={site.slug} isAdmin={isAdmin} flash={flash} onClose={() => setModal(null)} />}
       {modal === "pubhistory" && site && <PublishHistory site={site.slug} flash={flash} onClose={() => setModal(null)} />}
       {toast && <div className="toast" data-testid="toast">{toast}</div>}
+      <GuidedTour open={showTour} steps={dashboardTourSteps} storageKey={dashboardTourKey} onClose={() => setShowTour(false)} />
       <Footer />
     </div>
   );
@@ -1676,7 +1908,9 @@ function Editor({ site, page, onBack, flash }) {
   const [fillingAlt, setFillingAlt] = useState(false);
   const [showSeo, setShowSeo] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [showCoach, setShowCoach] = useState(() => { try { return !localStorage.getItem("ivd_coach_seen"); } catch { return false; } });
+  const [showTour, setShowTour] = useState(false);
+  const tourAutoStarted = useRef(false);
+  const editorTourKey = `ivd_editor_tour_v1_${user?.email || "user"}`;
   const [justSaved, setJustSaved] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [showSections, setShowSections] = useState(false);
@@ -1706,7 +1940,13 @@ function Editor({ site, page, onBack, flash }) {
   };
 
   useEffect(() => { if (!justSaved) return; const t = setTimeout(() => setJustSaved(false), 2500); return () => clearTimeout(t); }, [justSaved]);
-  const dismissCoach = () => { try { localStorage.setItem("ivd_coach_seen", "1"); } catch (e) {} setShowCoach(false); };
+  useEffect(() => {
+    if (tourAutoStarted.current) return undefined;
+    tourAutoStarted.current = true;
+    if (storageHas(editorTourKey)) return undefined;
+    const timer = window.setTimeout(() => setShowTour(true), 650);
+    return () => window.clearTimeout(timer);
+  }, [editorTourKey]);
   const openPreview = () => window.open(`${API}/editor/preview/${site}/${page}?v=${Date.now()}`, "_blank");
   const resetPage = async () => {
     if (!window.confirm("Reset this page back to the last version from your server?\n\n• Undoes ALL the draft changes you've made to THIS page.\n• A restore point is saved first, so you can undo it.\n• Your live website is NOT affected until you Publish.\n\nContinue?")) return;
@@ -1859,12 +2099,59 @@ function Editor({ site, page, onBack, flash }) {
     flash("SEO saved");
   };
 
+  const editorTourSteps = [
+    {
+      title: "This is the visual page editor",
+      body: "You are looking at a private working copy of the selected page. The tour will show you how to edit safely and how to check everything before it goes live.",
+      tip: "The page itself works like a preview, but clickable editing controls are added only inside this private screen.",
+    },
+    {
+      selector: '[data-testid="page-frame"]',
+      title: "Click directly on the page",
+      body: "Click wording to type over it. Click a photograph to replace, crop or reorder it. Buttons and repeating cards reveal their own simple controls when selected.",
+      tip: "Your changes save as a draft as you work; there is no separate Save button.",
+      placement: "overlay",
+    },
+    {
+      selector: '[data-testid="status-bar"]',
+      title: "Always check the draft status",
+      body: "This bar confirms whether the page is still a private draft and briefly shows when an edit has saved. Draft changes are not visible on the public website.",
+      placement: "bottom",
+    },
+    {
+      selector: '[data-testid="editor-preview"]',
+      title: "Preview the clean visitor view",
+      body: "Preview removes the editing outlines and controls, then opens the page exactly as a visitor will see it. Use it whenever you want reassurance before publishing.",
+      placement: "bottom",
+    },
+    {
+      selector: '[data-testid="editor-seo"]',
+      title: "Page title and image descriptions",
+      body: "This area lets you change the page title used by Google and the browser tab. It also includes the tool for filling missing image alt text.",
+      placement: "bottom",
+    },
+    {
+      selector: '[data-testid="editor-undo"]',
+      title: "Mistakes are easy to undo",
+      body: "Undo reverses your most recent editing action. Reset page is the bigger safety option when you want to return this whole page to its imported version.",
+      placement: "bottom",
+    },
+    {
+      selector: '[data-testid="editor-publish-btn"]',
+      title: "Make the draft live",
+      body: "Publish is the only action that changes the public website. You will see what is changing before confirming, and a backup is created as part of the process.",
+      tip: "Use Preview first, then Publish when everything looks right.",
+      placement: "bottom",
+    },
+  ];
+
   return (
     <div className="editor">
       <header className="topbar">
         <button className="btn ghost" data-testid="editor-back" onClick={onBack}>← All pages</button>
         <div className="editing-label">Editing: <b>/{page === "home" ? "" : page + "/"}</b></div>
         <div className="topbar-right">
+          <button className="btn ghost" data-testid="editor-tour-btn" onClick={() => setShowTour(true)}>▶ Tour</button>
           <button className="btn ghost" data-testid="editor-preview" onClick={openPreview} title="See your site exactly as visitors will — nothing is published">👁 Preview</button>
           <button className="btn ghost" data-testid="editor-seo" onClick={() => setShowSeo(true)}>⚙ SEO title</button>
           <button className="btn ghost" data-testid="editor-help" onClick={() => setShowHelp(true)}>? Help</button>
@@ -1882,20 +2169,6 @@ function Editor({ site, page, onBack, flash }) {
           ? <span>Your changes are <b>saved as a draft</b> — not live yet. Press <b>Publish</b> to put them on your website.</span>
           : <span>You're editing a private draft. Nothing goes live until you press <b>Publish</b>.</span>}
       </div>
-      {showCoach && (
-        <div className="coach-overlay" data-testid="coach-overlay" onClick={dismissCoach}>
-          <div className="coach-card" onClick={e => e.stopPropagation()}>
-            <h3>Welcome — editing is easy 👋</h3>
-            <ul>
-              <li><b>👆 Click any text</b> to change the words.</li>
-              <li><b>🖼 Click any photo</b> to swap it for your own.</li>
-              <li><b>🟢 Nothing goes live</b> until you press <b>Publish</b> — so feel free to experiment.</li>
-            </ul>
-            <p className="coach-tip">Use <b>👁 Preview</b> to see your site as visitors will, and <b>↺ Reset page</b> if you ever want to start this page over.</p>
-            <button className="btn primary" data-testid="coach-dismiss" onClick={dismissCoach}>Got it — let's go</button>
-          </div>
-        </div>
-      )}
       <div className="editor-body">
         <iframe
           key={nonce}
@@ -1926,7 +2199,7 @@ function Editor({ site, page, onBack, flash }) {
           </div>
         </Modal>
       )}
-      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} onStartTour={() => setShowTour(true)} />}
       {showSections && <SectionPicker busy={addingSection} hasSelection={!!selEid} onPick={addSection} onClose={() => setShowSections(false)} />}
       {showPublish && <PublishConfirm site={site} flash={flash} onClose={() => setShowPublish(false)} />}
       {cropState && <CropModal file={cropState.file} aspect={cropState.aspect} onCancel={() => setCropState(null)} onDone={finishCrop} />}
@@ -1934,6 +2207,7 @@ function Editor({ site, page, onBack, flash }) {
         onClose={() => setAltEdit(null)} onSaved={() => { setAltEdit(null); setDirty(true); setCanUndo(true); reload(); }} />}
       {statusEdit && <StatusModal site={site} page={page} eid={statusEdit.eid} flash={flash}
         onClose={() => setStatusEdit(null)} onDone={() => { setStatusEdit(null); setDirty(true); setCanUndo(true); reload(); }} />}
+      <GuidedTour open={showTour} steps={editorTourSteps} storageKey={editorTourKey} onClose={() => setShowTour(false)} />
     </div>
   );
 }

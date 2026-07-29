@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend-only regression test for the cms-v35-interactive-tour drop-in App.js. 31/33 checks passed. Both guided tours (dashboard, editor) work perfectly when triggered manually via the ▶ Tour button, Help modal replay, keyboard arrows, Back/Next/Skip/Esc/Finish and progress dots — however BOTH tours FAIL to auto-launch on first visit due to a React.StrictMode double-invocation bug in the useEffect that schedules the setTimeout. All regression-critical features are intact: Colours & Fonts theme panel (4 presets, accent, fonts, live preview, Save/Reset), + Add section picker (inserts + Undo works), Find & Replace opens, footer shows cms-v35 stamp on both UI and API, and admin login goes straight to dashboard (no forced-pw regression). Theme was reset and inserted section undone at the end so wifetobe is left clean.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "GuidedTour auto-launch (Dashboard + Editor)",
+        "issue": "Neither tour auto-launches on first visit even after localStorage is cleared. Root cause: the useEffect at App.js:1631-1637 (dashboard) and App.js:1943-1949 (editor) sets `tourAutoStarted.current = true` synchronously and schedules a 450ms/650ms setTimeout, with a cleanup that clears the timer. Under React.StrictMode (index.js:18) the effect runs twice in dev — first run sets ref=true + timer, cleanup clears the timer, second run sees ref already true and bails. Net result: setShowTour(true) never fires. The manual ▶ Tour button and Help replay both work because they call setShowTour(true) directly. Fix: set `tourAutoStarted.current = true` INSIDE the setTimeout callback (right before setShowTour(true)), or remove the ref guard, or move the storageHas check into a separate mount-only effect.",
+        "selector": "[data-testid=\"guided-tour\"]",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix auto-launch of BOTH dashboard and editor tours (App.js lines ~1631-1637 and ~1943-1949). The current useEffect sets the ref BEFORE the timer callback, so under React.StrictMode dev double-invocation the cleanup clears the timer and the second invocation bails out. Recommended fix: move `tourAutoStarted.current = true` inside the setTimeout callback (right before setShowTour(true)) so the guard only trips after the tour actually opens. Manual ▶ Tour button and Help replay work fine — this only affects first-visit auto-launch."
+  ],
+  "critical_code_review_comments": [
+    "App.js:1633 / 1945 — setting `tourAutoStarted.current = true` BEFORE the setTimeout callback is unsafe under React.StrictMode (dev) because the cleanup clears the timer before it fires and the second effect run bails. Move the ref assignment inside the setTimeout callback.",
+    "App.js is 2226 lines — well over the 700-line guideline. Should be split into modules (GuidedTour, ThemeModal, SectionPicker, EditorShell, DashboardShell, etc.).",
+    "Console shows two 401s on initial GET (likely /api/auth/me before login) — expected but should be silenced/handled to avoid noise."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only per request)", "frontend": "94% (31/33)"},
+  "seed_data_creation": "None. Wifetobe theme was reset (Reset to default) and the section inserted on /404/ was Undone — site left clean.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "admin@wifetobe.org / ChangeMe!2026 (superadmin, seeded)",
+  "context_for_next_testing_agent": "Frontend build stamp is cms-v35-interactive-tour. Both tours have 7 steps each. data-testids in use: guided-tour, tour-progress, tour-skip, tour-back, tour-next, dashboard-tour-btn, editor-tour-btn, help-btn, help-start-tour, help-guide, theme-btn, theme-panel, theme-preset-*, theme-accent-color, theme-heading-font, theme-body-font, theme-preview, theme-save, theme-reset, find-replace-btn, fr-find, editor-add-section, section-picker, section-*, build-stamp, modal-close. To force auto-launch you must clear localStorage keys containing 'tour' AND currently work around the StrictMode bug (or wait for the fix). Keyboard: ArrowLeft/ArrowRight navigate tour steps, Esc closes. Only 1 section is available in section-picker on /404/ — this is expected for that page but worth verifying on other pages after fix.",
+  "rca_of_the_issue": "React.StrictMode (index.js:18) causes dev-mode useEffect to run twice. In App.js:1631 the effect assigns `tourAutoStarted.current = true` synchronously and only THEN schedules the setTimeout. Cleanup on the first run clears that timer. Second run sees ref=true and returns early. Reproduction: clear all localStorage 'tour_*' keys, refresh dashboard or open editor, wait 6s — [data-testid=\"guided-tour\"] never appears. Confirmed empty localStorage at the moment the check would run. Fix pattern: `const timer = window.setTimeout(() => { tourAutoStarted.current = true; setShowTour(true); }, 450);` — this way the cleanup on the first effect run clears the pending timer AND the ref is still false, so the second run reschedules successfully."
+}
