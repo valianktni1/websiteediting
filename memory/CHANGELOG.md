@@ -2,6 +2,20 @@
 
 ## 2026-06 (fork continuation)
 
+### Integrated the interactive client tour (DONE, verified) — cms-v35
+- Integrated the user-supplied frontend-only "interactive tour" drop-in (App.js/App.css/version.js).
+  The drop-in was built on top of the current code, so all recent features are retained (verified:
+  ForcePasswordChange, ThemeModal+presets, SectionPicker+thumbnails, add-section, Find&Replace).
+- Adds a guided spotlight tour for BOTH the dashboard (7 steps) and the page editor: Back/Next/
+  Skip/Finish, progress dots, keyboard arrows, Esc; auto-launch on first visit (per-login via
+  localStorage), permanent "▶ Tour" buttons + replay link in Help. Footer stamped cms-v35 (UI+API).
+- Testing agent: 31/33 (94%). All regression-critical features intact. One HIGH bug found+FIXED:
+  both tours failed to auto-launch on first visit (React StrictMode double-invoke cleared the
+  setTimeout because `tourAutoStarted.current=true` was set synchronously before the timer). Fix:
+  set the guard INSIDE the setTimeout callback (App.js dashboard ~1631, editor ~1943). Re-verified
+  via screenshot: dashboard tour auto-launches ("Step 1 of 7 · Welcome"). Manual/Help replay always worked.
+
+
 ### Fix: deleting a feature bullet corrupted the whole list (DONE, verified) — cms-v34
 - SYMPTOM (from user screenshot): deleting one repetitive feature bullet made the list explode —
   duplicated/merged bullets, stray "ADD A FEATURE" prompts, broken layout, repeated description.

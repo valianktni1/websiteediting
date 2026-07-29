@@ -1630,9 +1630,8 @@ function Dashboard() {
 
   useEffect(() => {
     if (tourAutoStarted.current || !site) return undefined;
-    tourAutoStarted.current = true;
     if (storageHas(dashboardTourKey)) return undefined;
-    const timer = window.setTimeout(() => setShowTour(true), 450);
+    const timer = window.setTimeout(() => { tourAutoStarted.current = true; setShowTour(true); }, 450);
     return () => window.clearTimeout(timer);
   }, [site, dashboardTourKey]);
 
@@ -1942,9 +1941,8 @@ function Editor({ site, page, onBack, flash }) {
   useEffect(() => { if (!justSaved) return; const t = setTimeout(() => setJustSaved(false), 2500); return () => clearTimeout(t); }, [justSaved]);
   useEffect(() => {
     if (tourAutoStarted.current) return undefined;
-    tourAutoStarted.current = true;
     if (storageHas(editorTourKey)) return undefined;
-    const timer = window.setTimeout(() => setShowTour(true), 650);
+    const timer = window.setTimeout(() => { tourAutoStarted.current = true; setShowTour(true); }, 650);
     return () => window.clearTimeout(timer);
   }, [editorTourKey]);
   const openPreview = () => window.open(`${API}/editor/preview/${site}/${page}?v=${Date.now()}`, "_blank");
