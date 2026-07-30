@@ -76,7 +76,7 @@ def _suggest_alt_gemini(img_bytes, mime):
 app = FastAPI(title="Website Editor")
 api = APIRouter(prefix="/api")
 
-BUILD_VERSION = "2026-07-29-cms-v35-interactive-tour"
+BUILD_VERSION = "2026-07-29-cms-v36-bulk-image-fix"
 
 @api.get("/version")
 async def version():
@@ -1745,6 +1745,8 @@ async def add_section(slug_site: str, slug: str, body: AddSection, u=Depends(req
     regions = assign_regions(bodyel)
     await db.pages.update_one({"_id": p["_id"]}, {"$set": {"template": str(bodyel), "regions": regions}})
     return {"ok": True, "label": SECTION_LABELS[body.key]}
+
+@api.post("/pages/{slug_site}/{slug}/bulk-image")
 async def bulk_image(slug_site: str, slug: str, body: BulkImage, u=Depends(current_user)):
     if not scope_ok(u, slug_site): raise HTTPException(403,"Not allowed to edit this site")
     p = await db.pages.find_one({"site":slug_site,"slug":slug})

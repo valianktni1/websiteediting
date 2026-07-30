@@ -346,3 +346,14 @@ read v23-client-ux when live.
 
 Repo sync check (this session): user's GitHub zip == preview code (only CRLF vs LF differ);
 Pull button confirmed present in their repo before these UX additions.
+
+## 2026-06 (fork) — FIX: "used bikes gallery only accepts one image". Build cms-v36.
+ROOT CAUSE (verified, not guessed): the POST /api/pages/{site}/{slug}/bulk-image endpoint had NO
+route decorator — the @api.post(".../bulk-image") line was dropped when the add-section endpoint
+(cms-v30) was inserted directly ABOVE bulk_image (same regression pattern as the /sites/add publish
+404). So bulk-image was UNREGISTERED and returned 404 "Not Found" for ALL pages. Cars only "looked"
+fine because their multiple images were added BEFORE the break; any new bulk add (bikes or cars)
+silently failed with "Could not add photos". Reproduced via curl: 404 before fix, {ok:true,added:3}
+after; bikes card0 went 1→4 imgs, then undone to clean up. Fix = restored the decorator.
+LESSON (again): when inserting an endpoint above another, keep the NEXT function's @api decorator.
+USER ACTION: Save to GitHub → rebuild TrueNAS container → footer should read cms-v36.
